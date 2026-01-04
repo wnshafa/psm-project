@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "265253561470",
+    "project_id": "skincare-app-2e777",
+    "storage_bucket": "skincare-app-2e777.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:265253561470:android:25a366a723d87d6905642f",
+        "android_client_info": {
+          "package_name": "com.prestigemy.skincare"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD4ZPBHntDlPzAEbQk8BQDnzSZ88imu794"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
