@@ -1,148 +1,121 @@
+import { Ionicons } from "@expo/vector-icons";
 import { router } from 'expo-router';
-import React from 'react';
-import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
-import { BORDER_RADIUS, COLORS, FONT_SIZE, SPACING } from '../src/constants/theme';
+import { collection, doc, limit, onSnapshot, query, where } from 'firebase/firestore';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { COLORS } from '../src/constants/theme';
+import { auth, db } from '../src/lib/firebase';
 
 export default function ClientDashboard() {
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({ totalCompleted: 0, streak: 0, lastRoutine: 'Never' });
+  const [activeRoutines, setActiveRoutines] = useState<any[]>([]);
+  const [pendingReminders, setPendingReminders] = useState<any[]>([]);
+
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    // 1. Fetch Progress Stats
+    const unsubUser = onSnapshot(doc(db, 'users', user.uid), (snap) => {
+      if (snap.exists()) setStats(prev => ({ ...prev, streak: snap.data().streak || 0 }));
+    });
+
+    // 2. Fetch Active Routines
+    const routineQuery = query(collection(db, 'routines'), where('clientId', '==', user.uid), limit(2));
+    const unsubRoutines = onSnapshot(routineQuery, (snap) => {
+      setActiveRoutines(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    // 3. Fetch Pending Reminders
+    const reminderQuery = query(
+      collection(db, 'reminder'), 
+      where('clientID', '==', `/clients/${user.uid}`),
+      where('status', '==', 'pending'),
+      limit(2)
+    );
+    const unsubReminders = onSnapshot(reminderQuery, (snap) => {
+      setPendingReminders(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setLoading(false);
+    });
+
+    return () => { unsubUser(); unsubRoutines(); unsubReminders(); };
+  }, []);
+
+  if (loading) return <View style={styles.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
+
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Dashboard</Text>
-        <Text style={styles.headerSubtitle}>Track your skincare progress</Text>
-      </View>
-
-      {/* Progress Summary Card */}
-      <View style={styles.progressCard}>
-        <Text style={styles.progressTitle}>Your Progress</Text>
-
-        <View style={styles.progressRow}>
-          <Text style={styles.progressLabel}>Routines Completed</Text>
-          <Text style={styles.progressValue}>12</Text>
+    <SafeAreaView style={styles.screen}>
+      <ScrollView contentContainerStyle={styles.scroll}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Dashboard</Text>
+          <Text style={styles.headerSubtitle}>Track your skincare progress</Text>
         </View>
 
-        <View style={styles.progressRow}>
-          <Text style={styles.progressLabel}>Current Streak</Text>
-          <Text style={styles.progressValue}>5 days</Text>
+        {/* Progress Card */}
+        <View style={styles.card}>
+            <Text style={styles.cardTitle}>Your Progress</Text>
+            <View style={styles.progressRow}>
+                <Text style={styles.progressLabel}>Streak</Text>
+                <Text style={styles.progressValue}>{stats.streak} days</Text>
+            </View>
         </View>
 
-        <View style={styles.progressRow}>
-          <Text style={styles.progressLabel}>Last Routine</Text>
-          <Text style={styles.progressValue}>Yesterday</Text>
+        {/* Routine Preview Section */}
+        <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>My Routines</Text>
+            <Pressable onPress={() => router.push("/routinePage")}><Text style={styles.viewAll}>View All</Text></Pressable>
         </View>
-      </View>
+        {activeRoutines.map(r => (
+            <Pressable key={r.id} style={styles.itemRow} onPress={() => router.push("/routinePage")}>
+                <View>
+                    <Text style={styles.itemTitle}>{r.description || "Skincare Routine"}</Text>
+                    <Text style={styles.itemSubtitle}>{r.steps?.length || 0} steps assigned</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+            </Pressable>
+        ))}
 
-      {/* Primary Action: View Progress */}
-      <Pressable
-        style={styles.primaryActionBox}
-        onPress={() => router.push('/(tabs)/userProfile')}
-      >
-        <View style={styles.iconPlaceholder} />
-        <Text style={styles.actionTextPrimary}>View Progress</Text>
-      </Pressable>
-
-      {/* Secondary Action: Log Routine */}
-      <Pressable
-        style={styles.secondaryActionBox}
-        onPress={() => router.push('/(tabs)/routinePage')}
-      >
-        <View style={[styles.iconPlaceholder, { borderColor: COLORS.textSecondary }]} />
-        <Text style={styles.actionTextSecondary}>Log Daily Routine</Text>
-      </Pressable>
+        {/* Reminders Preview Section */}
+        <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Reminders</Text>
+            <Pressable onPress={() => router.push("/reminderPage")}><Text style={styles.viewAll}>View All</Text></Pressable>
+        </View>
+        {pendingReminders.length === 0 ? (
+            <Text style={styles.emptyText}>No pending reminders</Text>
+        ) : (
+            pendingReminders.map(rem => (
+                <View key={rem.id} style={[styles.itemRow, { borderLeftWidth: 4, borderLeftColor: COLORS.primary }]}>
+                    <View>
+                        <Text style={styles.itemTitle}>Routine Reminder</Text>
+                        <Text style={styles.itemSubtitle}>Status: {rem.status}</Text>
+                    </View>
+                    <Ionicons name="notifications" size={20} color={COLORS.primary} />
+                </View>
+            ))
+        )}
+      </ScrollView>
     </SafeAreaView>
   );
 }
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-    padding: SPACING.xl,
-  },
-
-  header: {
-    paddingVertical: SPACING.xl,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-    marginBottom: SPACING.xl,
-  },
-  headerTitle: {
-    fontSize: FONT_SIZE.xl,
-    fontWeight: 'bold',
-    color: COLORS.textPrimary,
-  },
-  headerSubtitle: {
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.textSecondary,
-    marginTop: SPACING.xs,
-  },
-
-  /* Progress Card */
-  progressCard: {
-    backgroundColor: COLORS.card,
-    padding: SPACING.xl,
-    borderRadius: BORDER_RADIUS.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginBottom: SPACING.xl,
-    gap: SPACING.md,
-  },
-  progressTitle: {
-    fontSize: FONT_SIZE.md,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-    marginBottom: SPACING.sm,
-  },
-  progressRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  progressLabel: {
-    color: COLORS.textSecondary,
-    fontSize: FONT_SIZE.sm,
-  },
-  progressValue: {
-    color: COLORS.textPrimary,
-    fontWeight: '700',
-    fontSize: FONT_SIZE.sm,
-  },
-
-  /* Action Buttons */
-  primaryActionBox: {
-    backgroundColor: COLORS.card,
-    height: 150,
-    borderRadius: BORDER_RADIUS.md,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: SPACING.xl,
-    gap: SPACING.sm,
-    borderWidth: 1,
-    borderColor: COLORS.primary,
-  },
-  secondaryActionBox: {
-    backgroundColor: 'transparent',
-    height: 150,
-    borderRadius: BORDER_RADIUS.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  iconPlaceholder: {
-    width: 40,
-    height: 40,
-    borderWidth: 2,
-    borderColor: COLORS.textPrimary,
-    borderRadius: 20,
-  },
-  actionTextPrimary: {
-    color: COLORS.textPrimary,
-    fontWeight: 'bold',
-    fontSize: FONT_SIZE.md,
-  },
-  actionTextSecondary: {
-    color: COLORS.textSecondary,
-    fontWeight: 'bold',
-    fontSize: FONT_SIZE.md,
-  },
+  screen: { flex: 1, backgroundColor: "#0d1b2a" },
+  scroll: { padding: 20, gap: 15 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: "#0d1b2a" },
+  header: { marginBottom: 10 },
+  headerTitle: { fontSize: 24, fontWeight: "700", color: "#e0e1dd" },
+  headerSubtitle: { fontSize: 14, color: "#778da9" },
+  card: { backgroundColor: "#1b263b", borderRadius: 18, padding: 18, borderWidth: 1, borderColor: "#415a77" },
+  cardTitle: { fontSize: 18, fontWeight: "700", color: "#e0e1dd", marginBottom: 10 },
+  progressRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  progressLabel: { color: "#778da9" },
+  progressValue: { color: "#e0e1dd", fontWeight: "700" },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#e0e1dd' },
+  viewAll: { color: "#415a77", fontSize: 12, fontWeight: '700' },
+  itemRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: "#1b263b", padding: 16, borderRadius: 12, borderWidth: 1, borderColor: "#415a77" },
+  itemTitle: { color: "#e0e1dd", fontWeight: '600', fontSize: 15 },
+  itemSubtitle: { color: "#778da9", fontSize: 12, marginTop: 2 },
+  emptyText: { color: "#778da9", fontStyle: 'italic', textAlign: 'center', marginTop: 10 }
 });

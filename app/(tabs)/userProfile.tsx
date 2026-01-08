@@ -1,10 +1,12 @@
-import { router } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { doc, getDoc, onSnapshot, updateDoc } from "firebase/firestore";
+import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
+  Modal,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -16,159 +18,211 @@ import {
 import { COLORS } from "../src/constants/theme";
 import { auth, db } from "../src/lib/firebase";
 
+const SKIN_TYPES = ["Oily", "Dry", "Combination", "Normal", "Sensitive"];
+const SKIN_CONCERNS = ["Acne", "Aging", "Hyperpigmentation", "Dryness", "Sensitivity", "Pores"];
+
 export default function UserProfile() {
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [streak, setStreak] = useState(0);
   
-  // New State for Editable Fields
   const [name, setName] = useState("");
   const [age, setAge] = useState("");
   const [skinConcern, setSkinConcern] = useState("");
   const [skinType, setSkinType] = useState("");
 
-  useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        setEmail(user.email || "");
-        
-        // 1. Listen to 'users' collection for name and streak
-        const unsubUser = onSnapshot(doc(db, 'users', user.uid), (snap) => {
-          if (snap.exists()) {
-            const data = snap.data();
-            setName(data.name || "");
-            setStreak(data.streak || 0);
-          }
-        });
+  // UI State for Modals
+  const [typeModalVisible, setTypeModalVisible] = useState(false);
+  const [concernModalVisible, setConcernModalVisible] = useState(false);
 
-        // 2. Fetch 'clients' collection for skin details
-        const clientSnap = await getDoc(doc(db, 'clients', user.uid));
-        if (clientSnap.exists()) {
-          const cData = clientSnap.data();
-          setAge(cData.age || "");
+  useEffect(() => {
+    let unsubUser: (() => void) | undefined;
+    let unsubClient: (() => void) | undefined;
+  
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        setEmail("");
+        setName("");
+        setStreak(0);
+        setAge("");
+        setSkinConcern("");
+        setSkinType("");
+        return;
+      }
+  
+      setEmail(user.email || "");
+  
+      unsubUser = onSnapshot(doc(db, "users", user.uid), (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          setName(data.name || "");
+          setStreak(data.streak || 0);
+        }
+      });
+  
+      unsubClient = onSnapshot(doc(db, "clients", user.uid), (snap) => {
+        if (snap.exists()) {
+          const cData = snap.data();
+          setAge(cData.age?.toString() || "");
           setSkinConcern(cData.skinConcern || "");
           setSkinType(cData.skinType || "");
         }
-
-        return () => unsubUser();
-      }
+      });
     });
-
-    return () => unsubscribeAuth();
+  
+    return () => {
+      unsubscribeAuth();
+      unsubUser?.();
+      unsubClient?.();
+    };
   }, []);
-
+  
+  
   const handleUpdateProfile = async () => {
     const user = auth.currentUser;
     if (!user) return;
-
     setLoading(true);
+  
     try {
-      // Update 'users' collection (Name)
-      await updateDoc(doc(db, 'users', user.uid), {
-        name: name,
-      });
-
-      // Update 'clients' collection (Age, Skin Concern, Skin Type)
-      await updateDoc(doc(db, 'clients', user.uid), {
-        age: age,
-        skinConcern: skinConcern,
-        skinType: skinType
-      });
-
-      Alert.alert("Success", "Profile updated successfully!");
+      // Update basic user info
+      await setDoc(doc(db, 'users', user.uid), { 
+        name 
+      }, { merge: true });
+  
+      // Update detailed skin info
+      await setDoc(doc(db, 'clients', user.uid), {
+        userId: user.uid, // REQUIRED by your security rules
+        age,
+        skinConcern,
+        skinType,
+        updatedAt: new Date()
+      }, { merge: true });
+  
+      Alert.alert("Success", "Profile updated!");
     } catch (error: any) {
-      Alert.alert("Update Error", error.message);
+      console.error("Save Error:", error);
+      Alert.alert("Error", "Save failed: " + error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      router.replace("/(auth)/login");
-    } catch (error: any) {
-      Alert.alert("Logout Error", error.message);
-    }
+  const handleLogout = () => {
+    Alert.alert("Logout", "Are you sure?", [
+      { text: "Cancel", style: "cancel" },
+      { 
+        text: "Logout", 
+        style: "destructive", 
+        onPress: async () => {
+          try {
+            // Just sign out. The Root Layout will see this and redirect the user.
+            await signOut(auth);
+Alert.alert("Signed out", "Auth state cleared");
+
+          } catch (error) {
+            console.error("Logout error:", error);
+            Alert.alert("Error", "Logout failed");
+          }
+        } 
+      }
+    ]);
   };
+  // Reusable Selection Modal Component
+  const SelectionModal = ({ visible, data, onSelect, onClose, title }: any) => (
+    <Modal visible={visible} transparent animationType="slide">
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>{title}</Text>
+          <FlatList
+            data={data}
+            keyExtractor={(item) => item}
+            renderItem={({ item }) => (
+              <Pressable 
+                style={styles.modalItem} 
+                onPress={() => { onSelect(item); onClose(); }}
+              >
+                <Text style={styles.modalItemText}>{item}</Text>
+              </Pressable>
+            )}
+          />
+          <Pressable style={styles.closeButton} onPress={onClose}>
+            <Text style={styles.closeButtonText}>Cancel</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
 
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.scroll}>
+        {/* Header with Logout Button */}
         <View style={styles.headerRow}>
-          <Text style={styles.logo}>PrestigeMy</Text>
-          <Pressable onPress={handleLogout} style={styles.linkButton}>
-            <Text style={styles.linkButtonText}>Log out</Text>
+          <Text style={styles.headerTitle}>User Profile</Text>
+          <Pressable onPress={handleLogout} style={styles.logoutButton}>
+            <Ionicons name="log-out-outline" size={20} color={COLORS.danger} />
+            <Text style={styles.logoutButtonText}>Logout</Text>
           </Pressable>
         </View>
 
-        {/* Profile Card */}
         <View style={styles.card}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{email.charAt(0).toUpperCase()}</Text>
-          </View>
-          <Text style={styles.nameDisplay}>{name || "Prestige Member"}</Text>
+          <View style={styles.avatar}><Text style={styles.avatarText}>{email.charAt(0).toUpperCase()}</Text></View>
+          <Text style={styles.nameDisplay}>{name || "User"}</Text>
           <Text style={styles.emailDisplay}>{email}</Text>
-
-          <View style={styles.statRow}>
-            <View style={styles.stat}>
-              <Text style={styles.statValue}>{streak}</Text>
-              <Text style={styles.statLabel}>Day streak</Text>
-            </View>
-            <View style={styles.divider} />
-            <View style={styles.stat}>
-              <Text style={styles.statValue}>Active</Text>
-              <Text style={styles.statLabel}>Status</Text>
-            </View>
+          
+          <View style={styles.streakBadge}>
+             <Text style={styles.streakText}>🔥 {streak} Day Streak</Text>
           </View>
         </View>
 
-        {/* Editable Fields Section */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Edit Personal Details</Text>
+          <Text style={styles.cardTitle}>Personal Details</Text>
           
           <Text style={styles.inputLabel}>Full Name</Text>
-          <TextInput 
-            style={styles.input} 
-            value={name} 
-            onChangeText={setName} 
-            placeholder="Enter your name"
-          />
+          <TextInput style={styles.input} value={name} onChangeText={setName} />
 
           <Text style={styles.inputLabel}>Age</Text>
-          <TextInput 
-            style={styles.input} 
-            value={age} 
-            onChangeText={setAge} 
-            keyboardType="numeric"
-            placeholder="e.g. 25"
-          />
+          <TextInput style={styles.input} value={age} onChangeText={setAge} keyboardType="numeric" />
 
-          <Text style={styles.inputLabel}>Skin Concern</Text>
-          <TextInput 
-            style={styles.input} 
-            value={skinConcern} 
-            onChangeText={setSkinConcern} 
-            placeholder="e.g. Acne, Dryness"
-          />
-
+          {/* Skin Type Picker Trigger */}
           <Text style={styles.inputLabel}>Skin Type</Text>
-          <TextInput 
-            style={styles.input} 
-            value={skinType} 
-            onChangeText={setSkinType} 
-            placeholder="e.g. Oily, Sensitive"
-          />
+          <Pressable style={styles.pickerTrigger} onPress={() => setTypeModalVisible(true)}>
+            <Text style={skinType ? styles.pickerText : styles.pickerPlaceholder}>
+              {skinType || "Select Skin Type"}
+            </Text>
+            <Ionicons name="chevron-down" size={16} color={COLORS.textSecondary} />
+          </Pressable>
 
-          <Pressable 
-            style={styles.primaryButton} 
-            onPress={handleUpdateProfile}
-            disabled={loading}
-          >
+          {/* Skin Concern Picker Trigger */}
+          <Text style={styles.inputLabel}>Skin Concern</Text>
+          <Pressable style={styles.pickerTrigger} onPress={() => setConcernModalVisible(true)}>
+            <Text style={skinConcern ? styles.pickerText : styles.pickerPlaceholder}>
+              {skinConcern || "Select Concern"}
+            </Text>
+            <Ionicons name="chevron-down" size={16} color={COLORS.textSecondary} />
+          </Pressable>
+
+          <Pressable style={styles.primaryButton} onPress={handleUpdateProfile} disabled={loading}>
             {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Save Changes</Text>}
           </Pressable>
         </View>
       </ScrollView>
+
+      {/* Selection Modals */}
+      <SelectionModal 
+        visible={typeModalVisible} 
+        data={SKIN_TYPES} 
+        title="Select Skin Type"
+        onSelect={setSkinType} 
+        onClose={() => setTypeModalVisible(false)} 
+      />
+      <SelectionModal 
+        visible={concernModalVisible} 
+        data={SKIN_CONCERNS} 
+        title="Select Primary Concern"
+        onSelect={setSkinConcern} 
+        onClose={() => setConcernModalVisible(false)} 
+      />
     </SafeAreaView>
   );
 }
@@ -176,23 +230,35 @@ export default function UserProfile() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.background },
   scroll: { padding: 20, gap: 16 },
-  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  logo: { color: COLORS.textPrimary, letterSpacing: 2, fontSize: 16, fontWeight: "700", textTransform: "uppercase" },
-  card: { backgroundColor: COLORS.card, borderRadius: 18, padding: 18, gap: 12, borderWidth: 1, borderColor: COLORS.border },
-  avatar: { width: 70, height: 70, borderRadius: 35, backgroundColor: COLORS.primary, justifyContent: "center", alignItems: "center", alignSelf: "center" },
+  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
+  headerTitle: { color: COLORS.textPrimary, fontSize: 20, fontWeight: "700" },
+  logoutButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: "rgba(230, 57, 70, 0.1)", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  logoutButtonText: { color: COLORS.danger, marginLeft: 6, fontWeight: '600', fontSize: 14 },
+  card: { backgroundColor: COLORS.card, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: COLORS.border },
+  avatar: { width: 70, height: 70, borderRadius: 35, backgroundColor: COLORS.primary, justifyContent: "center", alignItems: "center", alignSelf: "center", marginBottom: 10 },
   avatarText: { color: "#fff", fontWeight: "800", fontSize: 24 },
   nameDisplay: { textAlign: "center", color: COLORS.textPrimary, fontWeight: "700", fontSize: 20 },
   emailDisplay: { textAlign: "center", color: COLORS.textSecondary, fontSize: 14, marginBottom: 10 },
-  statRow: { flexDirection: "row", alignItems: "center", gap: 20, justifyContent: "center" },
-  stat: { alignItems: "center" },
-  statValue: { color: COLORS.textPrimary, fontWeight: "800", fontSize: 18 },
-  statLabel: { color: COLORS.textSecondary, fontSize: 12 },
-  divider: { width: 1, height: 30, backgroundColor: COLORS.border },
-  cardTitle: { fontSize: 18, fontWeight: "700", color: COLORS.textPrimary, marginBottom: 10 },
-  inputLabel: { color: COLORS.textSecondary, fontSize: 12, fontWeight: "600", marginBottom: 4, textTransform: "uppercase" },
+  streakBadge: { alignSelf: 'center', backgroundColor: COLORS.inputBackground, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20 },
+  streakText: { color: COLORS.textPrimary, fontSize: 12, fontWeight: '700' },
+  cardTitle: { fontSize: 18, fontWeight: "700", color: COLORS.textPrimary, marginBottom: 15 },
+  inputLabel: { color: COLORS.textSecondary, fontSize: 11, fontWeight: "600", marginBottom: 6, textTransform: "uppercase" },
   input: { backgroundColor: COLORS.inputBackground, borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, padding: 12, color: COLORS.textPrimary, marginBottom: 15 },
+  
+  // Picker Styles
+  pickerTrigger: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: COLORS.inputBackground, borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, padding: 14, marginBottom: 15 },
+  pickerText: { color: COLORS.textPrimary, fontSize: 15 },
+  pickerPlaceholder: { color: COLORS.textSecondary, fontSize: 15 },
+  
+  // Modal Styles
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: COLORS.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '50%' },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 15, textAlign: 'center' },
+  modalItem: { paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  modalItemText: { fontSize: 16, color: COLORS.textPrimary, textAlign: 'center' },
+  closeButton: { marginTop: 10, padding: 15, alignItems: 'center' },
+  closeButtonText: { color: COLORS.primary, fontWeight: '700' },
+
   primaryButton: { backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 14, alignItems: "center", marginTop: 10 },
   primaryText: { color: "#fff", fontWeight: "700", fontSize: 16 },
-  linkButton: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: COLORS.inputBackground },
-  linkButtonText: { color: COLORS.textPrimary, fontWeight: "700", fontSize: 13 },
 });

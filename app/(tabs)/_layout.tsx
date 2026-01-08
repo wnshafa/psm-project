@@ -1,53 +1,69 @@
-import { Ionicons } from "@expo/vector-icons";
-import { Tabs } from "expo-router";
-import React from "react";
+import { Ionicons } from '@expo/vector-icons';
+import { Tabs } from 'expo-router';
+import { COLORS } from '../src/constants/theme';
 
-export default function TabsLayout() {
+export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
+        tabBarActiveTintColor: COLORS.textPrimary,
+        tabBarInactiveTintColor: COLORS.textSecondary,
         tabBarStyle: {
-          backgroundColor: "#0d1b2a",
-          borderTopColor: "#415a77",
+          backgroundColor: COLORS.card,
+          borderTopColor: COLORS.border,
+          height: 60,
+          paddingBottom: 8,
+          paddingTop: 8,
         },
-        tabBarActiveTintColor: "#e0e1dd",
-        tabBarInactiveTintColor: "#778da9",
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: '600',
+        },
       }}
     >
       <Tabs.Screen
         name="homePage"
         options={{
-          title: "Home",
-          tabBarIcon: ({ size, color }) => (
-            <Ionicons name="home-outline" size={size} color={color} />
+          title: 'Home',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'home' : 'home-outline'} size={size} color={color} />
           ),
         }}
       />
       <Tabs.Screen
         name="routinePage"
         options={{
-          title: "Routine",
-          tabBarIcon: ({ size, color }) => (
-            <Ionicons name="list-outline" size={size} color={color} />
+          title: 'Routine',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'sparkles' : 'sparkles-outline'} size={size} color={color} />
           ),
         }}
       />
       <Tabs.Screen
-        name="addRoutine"
+        name="viewProgress"
         options={{
-          title: "Reminder",
-          tabBarIcon: ({ size, color }) => (
-            <Ionicons name="alarm-outline" size={size} color={color} />
+          title: 'Progress',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'analytics' : 'analytics-outline'} size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="reminderPage"
+        options={{
+          title: 'Reminders',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'notifications' : 'notifications-outline'} size={size} color={color} />
           ),
         }}
       />
       <Tabs.Screen
         name="userProfile"
         options={{
-          title: "Profile",
-          tabBarIcon: ({ size, color }) => (
-            <Ionicons name="person-outline" size={size} color={color} />
+          title: 'Profile',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'person' : 'person-outline'} size={size} color={color} />
           ),
         }}
       />
