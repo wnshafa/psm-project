@@ -1,56 +1,92 @@
-import { router } from "expo-router";
-import React, { useEffect } from "react";
-import {
-  SafeAreaView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-import { auth, db } from "./src/lib/firebase";
-import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc, DocumentSnapshot, DocumentData } from "firebase/firestore";
-import { COLORS } from "./src/constants/theme";
+import { router } from 'expo-router';
+import { onAuthStateChanged } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import React, { useEffect, useState } from 'react';
+import { Dimensions, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { COLORS } from './src/constants/theme';
+import { auth, db } from './src/lib/firebase';
 
-export default function Index() {
+const { width } = Dimensions.get('window');
+
+const SLIDES = [
+  {
+    id: '1',
+    title: 'Personalized Routines',
+    description: 'Get skincare steps tailored specifically for your skin type by experts.',
+    icon: 'sparkles',
+  },
+  {
+    id: '2',
+    title: 'Track Your Progress',
+    description: 'Log your daily routine and see the transformation with side-by-side photos.',
+    icon: 'trending-up',
+  },
+  {
+    id: '3',
+    title: 'Expert Consultation',
+    description: 'Stay connected with your consultant through reminders and progress monitoring.',
+    icon: 'people',
+  },
+];
+
+export default function OnboardingPage() {
+  const [currentSlide, setCurrentSlide] = useState(0);
+
   useEffect(() => {
-    // Check auth state
+    // Auth logic to skip landing if already logged in
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        // User is signed in, check role
-        const userDocRef = doc(db, 'users', user.uid);
-        const userDoc: DocumentSnapshot<DocumentData> = await getDoc(userDocRef);
-        
-        if (userDoc.exists()) {
-          const role = userDoc.data()?.role;
-          if (role === 'admin') {
-            router.replace("/(admin)/homePage");
-          } else {
-            router.replace("/(tabs)/homePage");
-          }
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (userDoc.exists() && userDoc.data().role === 'admin') {
+          router.replace('/(admin)/homePage');
         } else {
-           // Default to user home if doc doesn't exist
-           router.replace("/(tabs)/homePage");
+          router.replace('/(tabs)/homePage');
         }
-      } else {
-        // No user is signed in, wait for splash delay
-        setTimeout(() => {
-          router.replace("/(auth)/login");
-        }, 2000);
       }
     });
-
-    return () => unsubscribe();
+    return unsubscribe;
   }, []);
 
+  const handleNext = () => {
+    if (currentSlide < SLIDES.length - 1) {
+      setCurrentSlide(currentSlide + 1);
+    } else {
+      router.push('/(auth)/login');
+    }
+  };
+
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        <View style={styles.content}>
-            <View style={styles.logoCircle}>
-                <Text style={styles.logoText}>P</Text>
-            </View>
-            <Text style={styles.title}>PrestigeMy</Text>
-            <Text style={styles.subtitle}>Elevate your skincare</Text>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.content}>
+        {/* Progress Dots */}
+        <View style={styles.pagination}>
+          {SLIDES.map((_, index) => (
+            <View 
+              key={index} 
+              style={[styles.dot, currentSlide === index && styles.activeDot]} 
+            />
+          ))}
+        </View>
+
+        {/* Carousel Content */}
+        <View style={styles.slide}>
+          <Text style={styles.title}>{SLIDES[currentSlide].title}</Text>
+          <Text style={styles.description}>{SLIDES[currentSlide].description}</Text>
+        </View>
+
+        {/* Buttons */}
+        <View style={styles.footer}>
+          <Pressable style={styles.primaryBtn} onPress={handleNext}>
+            <Text style={styles.primaryBtnText}>
+              {currentSlide === SLIDES.length - 1 ? 'Get Started' : 'Next'}
+            </Text>
+          </Pressable>
+          
+          {currentSlide < SLIDES.length - 1 && (
+            <Pressable onPress={() => router.push('/(auth)/login')}>
+              <Text style={styles.skipLink}>Skip</Text>
+            </Pressable>
+          )}
         </View>
       </View>
     </SafeAreaView>
@@ -58,45 +94,16 @@ export default function Index() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  container: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  content: {
-    alignItems: "center",
-    gap: 12,
-  },
-  logoCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: COLORS.card,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginBottom: 10
-  },
-  logoText: {
-    color: COLORS.textPrimary,
-    fontSize: 40,
-    fontWeight: "800",
-  },
-  title: {
-    color: COLORS.textPrimary,
-    fontSize: 32,
-    fontWeight: "700",
-    letterSpacing: 4,
-    textTransform: "uppercase",
-  },
-  subtitle: {
-    color: COLORS.textSecondary,
-    fontSize: 14,
-    letterSpacing: 1,
-  },
+  container: { flex: 1, backgroundColor: COLORS.background },
+  content: { flex: 1, padding: 40, justifyContent: 'space-between', alignItems: 'center' },
+  pagination: { flexDirection: 'row', marginTop: 40, gap: 8 },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.border },
+  activeDot: { backgroundColor: COLORS.primary, width: 24 },
+  slide: { alignItems: 'center', width: '100%' },
+  title: { fontSize: 28, fontWeight: '800', color: COLORS.textPrimary, textAlign: 'center', marginBottom: 20 },
+  description: { fontSize: 16, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 24 },
+  footer: { width: '100%', alignItems: 'center', gap: 20, marginBottom: 20 },
+  primaryBtn: { backgroundColor: COLORS.primary, width: '100%', paddingVertical: 18, borderRadius: 20, alignItems: 'center' },
+  primaryBtnText: { color: COLORS.white, fontSize: 18, fontWeight: 'bold' },
+  skipLink: { color: COLORS.textSecondary, fontSize: 16, fontWeight: '600' },
 });

@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import React, { useEffect, useState } from "react";
@@ -26,8 +27,9 @@ export default function UserProfile() {
   const [email, setEmail] = useState("");
   const [streak, setStreak] = useState(0);
   
-  const [name, setName] = useState("");
+  const [fullName, setName] = useState("");
   const [age, setAge] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [skinConcern, setSkinConcern] = useState("");
   const [skinType, setSkinType] = useState("");
 
@@ -45,6 +47,7 @@ export default function UserProfile() {
         setName("");
         setStreak(0);
         setAge("");
+        setPhoneNumber("");
         setSkinConcern("");
         setSkinType("");
         return;
@@ -55,7 +58,7 @@ export default function UserProfile() {
       unsubUser = onSnapshot(doc(db, "users", user.uid), (snap) => {
         if (snap.exists()) {
           const data = snap.data();
-          setName(data.name || "");
+          setName(data.fullName || data.name || "");
           setStreak(data.streak || 0);
         }
       });
@@ -64,6 +67,7 @@ export default function UserProfile() {
         if (snap.exists()) {
           const cData = snap.data();
           setAge(cData.age?.toString() || "");
+          setPhoneNumber(cData.phoneNumber || "");
           setSkinConcern(cData.skinConcern || "");
           setSkinType(cData.skinType || "");
         }
@@ -86,13 +90,14 @@ export default function UserProfile() {
     try {
       // Update basic user info
       await setDoc(doc(db, 'users', user.uid), { 
-        name 
+        fullName 
       }, { merge: true });
   
       // Update detailed skin info
       await setDoc(doc(db, 'clients', user.uid), {
         userId: user.uid, // REQUIRED by your security rules
         age,
+        phoneNumber,
         skinConcern,
         skinType,
         updatedAt: new Date()
@@ -107,25 +112,14 @@ export default function UserProfile() {
     }
   };
 
-  const handleLogout = () => {
-    Alert.alert("Logout", "Are you sure?", [
-      { text: "Cancel", style: "cancel" },
-      { 
-        text: "Logout", 
-        style: "destructive", 
-        onPress: async () => {
-          try {
-            // Just sign out. The Root Layout will see this and redirect the user.
-            await signOut(auth);
-Alert.alert("Signed out", "Auth state cleared");
-
-          } catch (error) {
-            console.error("Logout error:", error);
-            Alert.alert("Error", "Logout failed");
-          }
-        } 
-      }
-    ]);
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      router.replace("/(auth)/login");
+      Alert.alert("You have been logout.");
+    } catch (error: any) {
+      Alert.alert("Logout Error", error.message);
+    }
   };
   // Reusable Selection Modal Component
   const SelectionModal = ({ visible, data, onSelect, onClose, title }: any) => (
@@ -167,7 +161,7 @@ Alert.alert("Signed out", "Auth state cleared");
 
         <View style={styles.card}>
           <View style={styles.avatar}><Text style={styles.avatarText}>{email.charAt(0).toUpperCase()}</Text></View>
-          <Text style={styles.nameDisplay}>{name || "User"}</Text>
+          <Text style={styles.nameDisplay}>{fullName || "User"}</Text>
           <Text style={styles.emailDisplay}>{email}</Text>
           
           <View style={styles.streakBadge}>
@@ -179,10 +173,20 @@ Alert.alert("Signed out", "Auth state cleared");
           <Text style={styles.cardTitle}>Personal Details</Text>
           
           <Text style={styles.inputLabel}>Full Name</Text>
-          <TextInput style={styles.input} value={name} onChangeText={setName} />
+          <TextInput style={styles.input} value={fullName} onChangeText={setName} />
 
           <Text style={styles.inputLabel}>Age</Text>
           <TextInput style={styles.input} value={age} onChangeText={setAge} keyboardType="numeric" />
+
+          <Text style={styles.inputLabel}>Phone Number</Text>
+          <TextInput 
+            style={styles.input} 
+            value={phoneNumber} 
+            onChangeText={setPhoneNumber} 
+            keyboardType="phone-pad"
+            placeholder="+1 (555) 123-4567"
+            placeholderTextColor={COLORS.textSecondary}
+          />
 
           {/* Skin Type Picker Trigger */}
           <Text style={styles.inputLabel}>Skin Type</Text>

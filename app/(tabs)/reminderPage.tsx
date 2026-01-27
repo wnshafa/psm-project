@@ -1,50 +1,95 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import {
+    collection,
+    doc,
+    onSnapshot,
+    query,
+    updateDoc,
+    where,
+    writeBatch
+} from "firebase/firestore";
 import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View
+    ActivityIndicator,
+    Pressable,
+    RefreshControl,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View
 } from "react-native";
+import { COLORS } from "../src/constants/theme";
 import { auth, db } from "../src/lib/firebase";
 
 export default function DisplayReminders() {
     const [reminders, setReminders] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
 
-    useEffect(() => {
+    const fetchReminders = () => {
         const user = auth.currentUser;
         if (!user) return;
 
-        // Query: pull from 'reminder' collection
-        // Filter: only reminders for this client that are 'pending'
-        // Note: Field name 'clientID' matches your Firestore screenshot
+        // Query filters for 'unread' to match Admin side and database screenshots
         const q = query(
             collection(db, 'reminder'), 
-            where('clientID', '==', `/clients/${user.uid}`),
-            where('status', '==', 'pending')
+            where('clientID', '==', `/clients/${user.uid}`), 
+            where('status', '==', 'unread') 
         );
         
-        const unsubscribe = onSnapshot(q, (snapshot) => {
+        return onSnapshot(q, (snapshot) => {
             const list = snapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data(),
-            }));
-            // Optional: Sort by date locally if Firestore index isn't ready
-            setReminders(list.sort((a, b) => b.date?.seconds - a.date?.seconds));
+            })) as any[];
+            
+            // Sort by date (newest first)
+            setReminders(list.sort((a, b) => (b.date?.seconds || 0) - (a.date?.seconds || 0)));
             setLoading(false);
+            setRefreshing(false);
         }, (error) => {
-            console.error("Reminder Query Error:", error);
+            console.error("Firestore Error:", error.message);
             setLoading(false);
+            setRefreshing(false);
         });
+    };
 
-        return () => unsubscribe();
+    useEffect(() => {
+        const unsubscribe = fetchReminders();
+        return () => unsubscribe?.();
     }, []);
+
+    const onRefresh = () => {
+        setRefreshing(true);
+        fetchReminders();
+    };
+
+    const markAsRead = async (reminderId: string) => {
+        try {
+            const reminderRef = doc(db, 'reminder', reminderId);
+            await updateDoc(reminderRef, {
+                status: 'read' // Matches Security Rules update permission
+            });
+        } catch (error) {
+            console.error("Error marking as read:", error);
+        }
+    };
+
+    const markAllAsRead = async () => {
+        if (reminders.length === 0) return;
+        try {
+            const batch = writeBatch(db);
+            reminders.forEach((rem) => {
+                const ref = doc(db, 'reminder', rem.id);
+                batch.update(ref, { status: 'read' });
+            });
+            await batch.commit();
+        } catch (error) {
+            console.error("Error clearing all:", error);
+        }
+    };
 
     const formatDate = (ts: any) => {
         if (!ts) return "N/A";
@@ -54,18 +99,28 @@ export default function DisplayReminders() {
 
     return (
         <SafeAreaView style={styles.screen}>
-            <ScrollView contentContainerStyle={styles.scroll}>
+            <ScrollView 
+                contentContainerStyle={styles.scroll}
+                refreshControl={
+                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
+                }
+            >
                 <View style={styles.headerRow}>
                     <Text style={styles.headerTitle}>Notifications</Text>
+                    {reminders.length > 0 && (
+                        <Pressable onPress={markAllAsRead}>
+                            <Text style={styles.clearAllText}>Clear All</Text>
+                        </Pressable>
+                    )}
                 </View>
 
                 {loading ? (
-                    <ActivityIndicator color="#e0e1dd" size="large" />
+                    <ActivityIndicator color={COLORS.primary} size="large" style={{ marginTop: 50 }} />
                 ) : (
                     <View style={styles.list}>
                         {reminders.length === 0 ? (
                             <View style={styles.emptyContainer}>
-                                <Ionicons name="notifications-off-outline" size={48} color="#415a77" />
+                                <Ionicons name="notifications-off-outline" size={48} color={COLORS.border} />
                                 <Text style={styles.cardHint}>You're all caught up!</Text>
                             </View>
                         ) : (
@@ -74,56 +129,59 @@ export default function DisplayReminders() {
                                     <View style={styles.cardHeader}>
                                         <View style={styles.statusRow}>
                                             <View style={styles.statusDot} />
-                                            <Text style={styles.cardTitle}>Routine Alert</Text>
+                                            {/* Displaying templateTitle from DB */}
+                                            <Text style={styles.cardTitle}>
+                                                {reminder.templateTitle || "Routine Alert"}
+                                            </Text>
                                         </View>
                                         <Text style={styles.dateText}>{formatDate(reminder.date)}</Text>
                                     </View>
                                     
                                     <View style={styles.infoBox}>
+                                        {/* Displaying specific message from DB */}
                                         <Text style={styles.infoText}>
-                                            An admin has scheduled a reminder for your skin routine. 
-                                            Check your routines page to start your next session.
+                                            {reminder.message || "Your consultant sent a new reminder."}
                                         </Text>
                                     </View>
-
-                                    <Pressable 
-                                        style={styles.primaryButton}
-                                        onPress={() => router.push("/routinePage")}
-                                    >
-                                        <Text style={styles.primaryText}>View My Routine</Text>
-                                    </Pressable>
+                                    
+                                    <View style={styles.buttonRow}>
+                                        <Pressable style={styles.primaryButton} onPress={() => router.push("/routinePage")}>
+                                            <Text style={styles.primaryText}>View Routine</Text>
+                                        </Pressable>
+                                        <Pressable style={styles.secondaryButton} onPress={() => markAsRead(reminder.id)}>
+                                            <Text style={styles.secondaryText}>Dismiss</Text>
+                                        </Pressable>
+                                    </View>
                                 </View>
                             ))
                         )}
                     </View>
                 )}
-
-                <Pressable onPress={() => router.back()} style={styles.backButton}>
-                    <Text style={styles.backButtonText}>Back to Dashboard</Text>
-                </Pressable>
             </ScrollView>
         </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
-    screen: { flex: 1, backgroundColor: "#0d1b2a" },
-    scroll: { padding: 20, gap: 20 },
-    headerRow: { marginTop: 10, marginBottom: 5 },
-    headerTitle: { fontSize: 24, fontWeight: "700", color: "#e0e1dd" },
-    card: { backgroundColor: "#1b263b", borderRadius: 18, padding: 18, gap: 12, borderWidth: 1, borderColor: "#415a77", marginBottom: 15 },
-    cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
-    statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    statusDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#778da9' },
-    cardTitle: { fontSize: 16, fontWeight: "700", color: "#e0e1dd" },
-    dateText: { fontSize: 12, color: "#778da9" },
-    infoBox: { backgroundColor: "#22334b", padding: 12, borderRadius: 12, marginTop: 4 },
-    infoText: { color: "#e0e1dd", fontSize: 14, lineHeight: 20 },
-    primaryButton: { backgroundColor: "#415a77", borderRadius: 12, paddingVertical: 12, alignItems: "center", marginTop: 8 },
-    primaryText: { color: "#e0e1dd", fontWeight: "700", fontSize: 14 },
-    backButton: { alignItems: 'center', padding: 10, marginTop: 10 },
-    backButtonText: { color: "#778da9", fontWeight: "600" },
-    emptyContainer: { alignItems: 'center', marginTop: 50, gap: 12 },
-    cardHint: { fontSize: 14, color: "#778da9", textAlign: 'center' },
+    screen: { flex: 1, backgroundColor: COLORS.background },
+    scroll: { padding: 20, paddingBottom: 40 },
+    headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+    headerTitle: { fontSize: 24, fontWeight: "800", color: COLORS.textPrimary },
+    clearAllText: { color: COLORS.primary, fontWeight: '700' },
     list: { gap: 15 },
+    card: { backgroundColor: COLORS.card, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: COLORS.border },
+    cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: 'center' },
+    statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    statusDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.primary },
+    cardTitle: { fontSize: 16, fontWeight: "700", color: COLORS.textPrimary },
+    dateText: { fontSize: 11, color: COLORS.textSecondary },
+    infoBox: { backgroundColor: COLORS.inputBackground, padding: 12, borderRadius: 12, marginVertical: 10 },
+    infoText: { color: COLORS.textPrimary, fontSize: 14, lineHeight: 20 },
+    buttonRow: { flexDirection: 'row', gap: 10 },
+    primaryButton: { flex: 2, backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 12, alignItems: "center" },
+    primaryText: { color: COLORS.white, fontWeight: "700" },
+    secondaryButton: { flex: 1, backgroundColor: COLORS.inputBackground, borderRadius: 12, paddingVertical: 12, alignItems: "center", borderWidth: 1, borderColor: COLORS.border },
+    secondaryText: { color: COLORS.textSecondary, fontWeight: "700" },
+    emptyContainer: { alignItems: 'center', marginTop: 100 },
+    cardHint: { color: COLORS.textSecondary, marginTop: 10 }
 });
