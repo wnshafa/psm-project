@@ -89,7 +89,7 @@ export default function UserProfile() {
   
     try {
       // Update basic user info
-      await setDoc(doc(db, 'users', user.uid), { 
+      await setDoc(doc(db, 'clients', user.uid), { 
         fullName 
       }, { merge: true });
   

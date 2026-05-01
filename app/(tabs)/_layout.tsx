@@ -113,6 +113,24 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="productsPage"
+        options={{
+          title: 'Products',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'cart' : 'cart-outline'} size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="skinChartAnalysis"
+        options={{
+          title: 'Skin Analysis',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'bar-chart' : 'bar-chart-outline'} size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="userProfile"
         options={{
           title: 'Profile',
@@ -121,6 +139,8 @@ export default function TabLayout() {
           ),
         }}
       />
+
     </Tabs>
+    
   );
 }

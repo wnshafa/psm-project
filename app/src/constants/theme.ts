@@ -1,14 +1,13 @@
 export const COLORS = {
-  background: "#1a2f4a",
-  card: "#243a52",
-  border: "#3d5a7f",
-  inputBackground: "#2d4460",
-  
-  textPrimary: "#ffffff",
-  textSecondary: "#b0b9c9",
+  background: "#F7F9FC",
+  card: "#FFFFFF",
+  primary: "#FF8BA7",
+  textPrimary: "#1F2937",
+  textSecondary: "#6B7280",
+  border: "#E5E7EB",
+ 
   textInverse: "#1a2f4a", // Text on light backgrounds if any
 
-  primary: "#d4a574", // Gold
   white: "#ffffff",
   black: "#000000",
   success: "#4cc9f0", // Just a placeholder for success if needed

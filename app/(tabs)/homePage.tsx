@@ -2,234 +2,317 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from 'expo-router';
 import { collection, doc, limit, onSnapshot, query, where } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Dimensions,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { COLORS } from '../src/constants/theme';
+import { getSkincareRecommendations } from '../src/features/recommendation/recommendationService';
 import { auth, db } from '../src/lib/firebase';
+import { getAllProducts } from '../src/services/productService';
+
+const SCREEN_WIDTH = Dimensions.get('window').width;
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface Product {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+}
+
+interface SkinProfile {
+  skinType: string;
+  skinConcern: string;
+}
+
+interface Stats {
+  totalCompleted: number;
+  streak: number;
+  lastRoutine: string;
+}
+
+// ─── Skin Analysis Bar Chart (no external lib needed) ────────────────────────
+
+const SKIN_METRICS = [
+  { label: 'Hydration',    value: 72, color: '#4ecdc4' },
+  { label: 'Oiliness',     value: 45, color: '#ff6b6b' },
+  { label: 'Sensitivity',  value: 60, color: '#f7b731' },
+  { label: 'Brightness',   value: 80, color: '#a29bfe' },
+];
+
+function SkinAnalysisChart() {
+  const barMaxWidth = SCREEN_WIDTH - 80; // left label + padding
+
+  return (
+    <View style={chartStyles.container}>
+      {SKIN_METRICS.map((metric) => (
+        <View key={metric.label} style={chartStyles.row}>
+          <Text style={chartStyles.label}>{metric.label}</Text>
+          <View style={chartStyles.trackBackground}>
+            <View
+              style={[
+                chartStyles.trackFill,
+                {
+                  width: (metric.value / 100) * (barMaxWidth - 60),
+                  backgroundColor: metric.color,
+                },
+              ]}
+            />
+          </View>
+          <Text style={chartStyles.value}>{metric.value}%</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const chartStyles = StyleSheet.create({
+  container: { gap: 10, marginTop: 10 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  label: { width: 80, fontSize: 12, color: '#666' },
+  trackBackground: {
+    flex: 1,
+    height: 10,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 5,
+    overflow: 'hidden',
+  },
+  trackFill: { height: '100%', borderRadius: 5 },
+  value: { width: 36, fontSize: 12, color: '#333', textAlign: 'right' },
+});
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function ClientDashboard() {
+  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({ totalCompleted: 0, streak: 0, lastRoutine: 'Never' });
-  const [activeRoutines, setActiveRoutines] = useState<any[]>([]);
+  const [stats, setStats] = useState<Stats>({ totalCompleted: 0, streak: 0, lastRoutine: 'Never' });
   const [pendingReminders, setPendingReminders] = useState<any[]>([]);
+  const [skinProfile, setSkinProfile] = useState<SkinProfile>({ skinType: '', skinConcern: '' });
+  const [savedProductIds, setSavedProductIds] = useState<string[]>([]);
+  const [recommendation, setRecommendation] = useState<{ message: string; categories: string[] }>({
+    message: '',
+    categories: [],
+  });
+  const [recommendedProducts, setRecommendedProducts] = useState<Product[]>([]);
 
+  // ─── Toggle Save ─────────────────────────────────────────────────────────
+  const toggleSave = (productId: string) => {
+    setSavedProductIds((prev) =>
+      prev.includes(productId) ? prev.filter((id) => id !== productId) : [...prev, productId]
+    );
+  };
+
+  // ─── Effects ──────────────────────────────────────────────────────────────
   useEffect(() => {
     const user = auth.currentUser;
     if (!user) return;
 
-    // 1. Fetch Progress Stats
+    // 1. Fetch products
+    const fetchProducts = async () => {
+      const data = await getAllProducts();
+      setProducts(data);
+    };
+    fetchProducts();
+
+    // 2. Fetch user profile (skin type + concern)
     const unsubUser = onSnapshot(doc(db, 'clients', user.uid), (snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        setStats(prev => ({ 
-          ...prev, 
+        setStats({
           streak: data.streak || 0,
-          totalCompleted: data.totalCompleted || 0
-        }));
+          totalCompleted: data.totalCompleted || 0,
+          lastRoutine: data.lastRoutine || 'Never',
+        });
+        setSkinProfile({
+          skinType: data.skinType || 'normal',
+          skinConcern: data.skinConcern || 'medium',
+        });
       }
     });
 
-    // 2. Fetch Active Routines
-    const routineQuery = query(collection(db, 'routines'), where('clientId', '==', user.uid), limit(2));
-    const unsubRoutines = onSnapshot(routineQuery, (snap) => {
-      setActiveRoutines(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    // 3. Fetch Active Routines (kept for future use)
+    const routineQuery = query(
+      collection(db, 'routines'),
+      where('clientId', '==', user.uid),
+      limit(2)
+    );
+    const unsubRoutines = onSnapshot(routineQuery, () => {});
 
-    // 3. Fetch Pending Reminders
+    // 4. Fetch Pending Reminders
     const reminderQuery = query(
-      collection(db, 'reminder'), 
+      collection(db, 'reminder'),
       where('clientID', '==', `/clients/${user.uid}`),
       where('status', '==', 'unread'),
       limit(2)
     );
     const unsubReminders = onSnapshot(reminderQuery, (snap) => {
-      setPendingReminders(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setPendingReminders(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       setLoading(false);
     });
 
-    return () => { unsubUser(); unsubRoutines(); unsubReminders(); };
+    return () => {
+      unsubUser();
+      unsubRoutines();
+      unsubReminders();
+    };
   }, []);
 
-  if (loading) return <View style={styles.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
+  // ─── Compute recommendations when skinProfile or products change ──────────
+  useEffect(() => {
+    if (!skinProfile.skinType || products.length === 0) return;
 
+    const rec = getSkincareRecommendations(skinProfile.skinType, skinProfile.skinConcern);
+    setRecommendation(rec);
+
+    const filtered = products.filter((p) => rec.categories.includes(p.category));
+    setRecommendedProducts(filtered);
+  }, [skinProfile, products]);
+
+  // ─── Loading ──────────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
+
+  // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.scroll}>
+
+        {/* ── Header ── */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Dashboard</Text>
           <Text style={styles.headerSubtitle}>Track your skincare progress</Text>
         </View>
 
-        {/* Progress Stats Cards */}
+        {/* ── Recommended Products ── */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Recommended for you</Text>
+          <Text style={styles.sectionSubtitle}>{recommendation.message || 'Based on your skin condition, these are recommended products.'}</Text>
+
+          {recommendedProducts.length === 0 ? (
+            <Text style={styles.emptyText}>No recommendations available</Text>
+          ) : (
+            recommendedProducts.slice(0, 3).map((product) => {
+              const isSaved = savedProductIds.includes(product.id);
+              return (
+                <View key={product.id} style={styles.productCard}>
+                  <View style={styles.productInfo}>
+                    <Text style={styles.productTitle}>{product.name}</Text>
+                    <Text style={styles.productDescription}>{product.description}</Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => toggleSave(product.id)}
+                    style={styles.saveButton}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons
+                      name={isSaved ? 'bookmark' : 'bookmark-outline'}
+                      size={20}
+                      color={isSaved ? COLORS.primary : '#aaa'}
+                    />
+                  </TouchableOpacity>
+                </View>
+              );
+            })
+          )}
+
+          <Pressable onPress={() => router.push('../productsPage')}>
+            <Text style={styles.viewAll}>View All →</Text>
+          </Pressable>
+        </View>
+
+        {/* ── Stats ── */}
         <View style={styles.statsContainer}>
           <View style={styles.statCard}>
-            <View style={styles.statIconBg}>
-              <Ionicons name="flame" size={24} color="#ff6b6b" />
-            </View>
+            <Ionicons name="flame" size={24} color="#ff6b6b" />
             <Text style={styles.statValue}>{stats.streak}</Text>
             <Text style={styles.statLabel}>Day Streak</Text>
           </View>
           <View style={styles.statCard}>
-            <View style={styles.statIconBg}>
-              <Ionicons name="checkmark-circle" size={24} color="#51cf66" />
-            </View>
+            <Ionicons name="checkmark-circle" size={24} color="#51cf66" />
             <Text style={styles.statValue}>{stats.totalCompleted}</Text>
             <Text style={styles.statLabel}>Completed</Text>
           </View>
           <View style={styles.statCard}>
-            <View style={styles.statIconBg}>
-              <Ionicons name="notifications-circle" size={24} color="#4ecdc4" />
-            </View>
+            <Ionicons name="notifications-circle" size={24} color="#4ecdc4" />
             <Text style={styles.statValue}>{pendingReminders.length}</Text>
             <Text style={styles.statLabel}>Pending</Text>
           </View>
         </View>
 
-        {/* Routine Preview Section */}
-        <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>My Routines</Text>
-            <Pressable onPress={() => router.push("/routinePage")}><Text style={styles.viewAll}>View All →</Text></Pressable>
+        {/* ── Skin Analysis Graph ── */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Skin Analysis</Text>
+          <Text style={styles.sectionSubtitle}>Your latest skin health overview</Text>
+          <SkinAnalysisChart />
         </View>
-        {activeRoutines.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Ionicons name="checkmark-done-outline" size={40} color={COLORS.border} />
-              <Text style={styles.emptyText}>No routines assigned yet</Text>
-            </View>
-        ) : (
-            activeRoutines.map(r => (
-                <Pressable key={r.id} style={styles.itemRow} onPress={() => router.push("/routinePage")}>
-                    <View style={styles.itemContent}>
-                        <View style={styles.itemIconBg}>
-                          <Ionicons name="leaf" size={20} color={COLORS.primary} />
-                        </View>
-                        <View>
-                            <Text style={styles.itemTitle}>{r.description || "Skincare Routine"}</Text>
-                            <Text style={styles.itemSubtitle}>{r.steps?.length || 0} steps assigned</Text>
-                        </View>
-                    </View>
-                    <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
-                </Pressable>
-            ))
-        )}
 
-        {/* Reminders Preview Section */}
-        <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Reminders</Text>
-            <Pressable onPress={() => router.push("/reminderPage")}><Text style={styles.viewAll}>View All →</Text></Pressable>
-        </View>
-        {pendingReminders.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Ionicons name="notifications-off-outline" size={40} color={COLORS.border} />
-              <Text style={styles.emptyText}>No pending reminders</Text>
-            </View>
-        ) : (
-            pendingReminders.map(rem => (
-                <View key={rem.id} style={styles.reminderRow}>
-                    <View style={styles.reminderIconBg}>
-                      <Ionicons name="notifications" size={20} color="#ff6b6b" />
-                    </View>
-                    <View style={styles.reminderContent}>
-                        <Text style={styles.itemTitle}>Routine Reminder</Text>
-                        <Text style={styles.itemSubtitle}>Status: <Text style={styles.statusBadge}>{rem.status}</Text></Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
-                </View>
-            ))
-        )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.background },
-  scroll: { padding: 20, gap: 15, paddingBottom: 40 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background },
-  header: { marginBottom: 5 },
-  headerTitle: { fontSize: 28, fontWeight: "800", color: COLORS.textPrimary },
-  headerSubtitle: { fontSize: 14, color: COLORS.textSecondary, marginTop: 2 },
-  
-  // Stats Container
-  statsContainer: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginVertical: 10 },
-  statCard: { 
-    flex: 1, 
-    backgroundColor: COLORS.card, 
-    borderRadius: 16, 
-    padding: 16, 
-    borderWidth: 1, 
-    borderColor: COLORS.border,
-    alignItems: 'center',
-    justifyContent: 'center'
+  scroll: { padding: 20, gap: 16, paddingBottom: 40 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+
+  // Header
+  header: { marginBottom: 4 },
+  headerTitle: { fontSize: 28, fontWeight: '800', color: COLORS.textPrimary },
+  headerSubtitle: { fontSize: 14, color: COLORS.textSecondary },
+
+  // Section
+  section: {
+    backgroundColor: COLORS.card,
+    borderRadius: 14,
+    padding: 16,
   },
-  statIconBg: { 
-    width: 50, 
-    height: 50, 
-    borderRadius: 25, 
-    backgroundColor: "rgba(255, 107, 107, 0.1)", 
-    justifyContent: 'center', 
-    alignItems: 'center',
-    marginBottom: 10
-  },
-  statValue: { fontSize: 20, fontWeight: "800", color: COLORS.textPrimary, marginBottom: 4 },
-  statLabel: { fontSize: 11, color: COLORS.textSecondary, fontWeight: '600' },
-  
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, marginBottom: 10 },
-  sectionTitle: { fontSize: 17, fontWeight: '700', color: COLORS.textPrimary },
-  viewAll: { color: COLORS.primary, fontSize: 13, fontWeight: '600' },
-  
-  itemRow: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    backgroundColor: COLORS.card, 
-    padding: 14, 
-    borderRadius: 14, 
-    borderWidth: 1, 
-    borderColor: COLORS.border,
-    marginBottom: 10
-  },
-  itemContent: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 },
-  itemIconBg: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "rgba(78, 205, 196, 0.1)",
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  itemTitle: { color: COLORS.textPrimary, fontWeight: '600', fontSize: 15 },
-  itemSubtitle: { color: COLORS.textSecondary, fontSize: 12, marginTop: 4 },
-  statusBadge: { color: "#ff6b6b", fontWeight: '700' },
-  
-  reminderRow: {
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary },
+  sectionSubtitle: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2, marginBottom: 10 },
+
+  // Product Card
+  productCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.card,
-    padding: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginBottom: 10,
-    gap: 12
+    backgroundColor: COLORS.background,
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 8,
   },
-  reminderIconBg: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "rgba(255, 107, 107, 0.1)",
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  reminderContent: { flex: 1 },
-  
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 30,
+  productInfo: { flex: 1 },
+  productTitle: { fontWeight: '700', fontSize: 14, color: COLORS.textPrimary },
+  productDescription: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
+  saveButton: { paddingLeft: 10 },
+
+  viewAll: { color: COLORS.primary, marginTop: 8, fontWeight: '600' },
+  emptyText: { fontSize: 12, color: COLORS.textSecondary },
+
+  // Stats
+  statsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     backgroundColor: COLORS.card,
     borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginBottom: 10
+    padding: 16,
   },
-  emptyText: { color: COLORS.textSecondary, fontStyle: 'italic', marginTop: 10, fontSize: 14 }
+  statCard: { flex: 1, alignItems: 'center', gap: 4 },
+  statValue: { fontSize: 18, fontWeight: '700', color: COLORS.textPrimary },
+  statLabel: { fontSize: 11, color: COLORS.textSecondary },
 });

@@ -106,4 +106,120 @@ const styles = StyleSheet.create({
   primaryBtn: { backgroundColor: COLORS.primary, width: '100%', paddingVertical: 18, borderRadius: 20, alignItems: 'center' },
   primaryBtnText: { color: COLORS.white, fontSize: 18, fontWeight: 'bold' },
   skipLink: { color: COLORS.textSecondary, fontSize: 16, fontWeight: '600' },
+
+  screen: { 
+    flex: 1, 
+    backgroundColor: COLORS.background 
+  },
+
+  scroll: { 
+    padding: 20, 
+    gap: 18, 
+    paddingBottom: 40 
+  },
+
+  center: { 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center' 
+  },
+
+  // HEADER
+  header: {
+    marginBottom: 10,
+  },
+
+  headerTitle: { 
+    fontSize: 26, 
+    fontWeight: "800", 
+    color: COLORS.textPrimary 
+  },
+
+  headerSubtitle: { 
+    fontSize: 14, 
+    color: COLORS.textSecondary,
+    marginTop: 4
+  },
+
+  // 🔥 RECOMMENDATION CARD
+  recommendationSection: {
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+
+  sectionTitle: { 
+    fontSize: 16, 
+    fontWeight: "700",
+    color: COLORS.textPrimary
+  },
+
+  recommendationMessage: { 
+    fontSize: 12, 
+    marginBottom: 12, 
+    color: COLORS.textSecondary 
+  },
+
+  productCard: {
+    backgroundColor: "#F9FAFB",
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 10
+  },
+
+  productTitle: { 
+    fontWeight: "600", 
+    fontSize: 14,
+    color: COLORS.textPrimary
+  },
+
+  productDescription: { 
+    fontSize: 12, 
+    color: COLORS.textSecondary,
+    marginTop: 2
+  },
+
+  viewAll: { 
+    color: COLORS.primary, 
+    marginTop: 10,
+    fontWeight: "600"
+  },
+
+  emptyText: { 
+    fontSize: 12, 
+    color: COLORS.textSecondary 
+  },
+
+  // 🔥 STATS CARD IMPROVED
+  statsContainer: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between',
+    gap: 10
+  },
+
+  statCard: { 
+    flex: 1,
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+    elevation: 3
+  },
+
+  statValue: { 
+    fontSize: 20, 
+    fontWeight: "800",
+    marginTop: 6,
+    color: COLORS.textPrimary
+  },
+
+  statLabel: { 
+    fontSize: 11,
+    color: COLORS.textSecondary
+  },
+
 });
