@@ -161,8 +161,8 @@ export interface ReminderLog {
   date: Timestamp;
   status: string;
 }
-=======
-import { Timestamp } from "firebase/firestore";
+
+
 
 // --- USER & CLIENT PROFILES ---
 export interface UserData {
@@ -324,4 +324,4 @@ export interface ReminderLog {
   date: Timestamp;
   status: string;
 }
->>>>>>> 738cb97 (updated)
+
