@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 import { Timestamp } from "firebase/firestore";
 
 // --- USER & CLIENT PROFILES ---
