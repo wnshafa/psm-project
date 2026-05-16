@@ -9,7 +9,6 @@ import {
   Image,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,8 +16,9 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-import { COLORS } from "../src/constants/theme";
-import { auth, db } from "../src/lib/firebase";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { COLORS } from "../../src/constants/theme";
+import { auth, db } from "../../src/lib/firebase";
 
 export default function Login() {
   const { width } = useWindowDimensions();
@@ -53,20 +53,34 @@ export default function Login() {
       const uid = userCredential.user?.uid;
 
       if (uid) {
-        // 3. Role-Based Check
+        // 3. Role-Based Check + Platform Enforcement
+        const isWeb = Platform.OS === 'web';
+
         const adminDoc = await getDoc(doc(db, 'admin', uid));
         if (adminDoc.exists()) {
-          router.replace("../(admin)/homePage");
+          if (isWeb) {
+            router.replace("../(admin)/homePage");
+          } else {
+            setErrorText("Admin access is web-only. Please visit the admin portal in your browser.");
+          }
           return;
         }
 
         const userDoc = await getDoc(doc(db, 'users', uid));
         if (userDoc.exists()) {
-          const userData = userDoc.data();
-          if (userData?.role === 'admin') {
-            router.replace("../(admin)/homePage");
+          const role = userDoc.data()?.role;
+          if (role === 'admin') {
+            if (isWeb) {
+              router.replace("../(admin)/homePage");
+            } else {
+              setErrorText("Admin access is web-only. Please visit the admin portal in your browser.");
+            }
           } else {
-            router.replace("../(tabs)/homePage");
+            if (!isWeb) {
+              router.replace("../(tabs)/homePage");
+            } else {
+              setErrorText("Client access is mobile-only. Please use the PRESTIGEMY mobile app.");
+            }
           }
         } else {
           const msg = "User record not found. Please contact support.";
@@ -113,8 +127,8 @@ export default function Login() {
           
           {/* LEFT SIDE: BRANDING SECTION */}
           <View style={[styles.brandingSection, { backgroundColor: PRESTIGE_NAVY }, isDesktop ? styles.halfWidth : styles.fullWidth]}>
-            <Image 
-
+            <Image
+              source={require('../../assets/images/prestige_logo.png')}
               style={isDesktop ? styles.logoWeb : styles.logoMobile}
               resizeMode="contain"
             />
@@ -174,15 +188,17 @@ export default function Login() {
                 )}
               </Pressable>
 
-              <Pressable 
-                style={styles.link} 
-                onPress={() => router.push("/(auth)/createAccount")}
-                disabled={loading}
-              >
-                <Text style={styles.linkText}>
-                  Don't have an account? <Text style={{ color: PRESTIGE_NAVY, fontWeight: '700' }}>Create one</Text>
-                </Text>
-              </Pressable>
+              {Platform.OS !== 'web' && (
+                <Pressable
+                  style={styles.link}
+                  onPress={() => router.push("/(auth)/createAccount")}
+                  disabled={loading}
+                >
+                  <Text style={styles.linkText}>
+                    Don't have an account? <Text style={{ color: PRESTIGE_NAVY, fontWeight: '700' }}>Create one</Text>
+                  </Text>
+                </Pressable>
+              )}
             </View>
           </View>
 

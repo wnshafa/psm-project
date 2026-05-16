@@ -16,15 +16,15 @@ import {
   FlatList,
   Modal,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View
 } from "react-native";
-import { BORDER_RADIUS, COLORS, FONT_SIZE, SPACING } from "../src/constants/theme";
-import { auth, db } from "../src/lib/firebase";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { BORDER_RADIUS, COLORS, FONT_SIZE, SPACING } from "../../src/constants/theme";
+import { auth, db } from "../../src/lib/firebase";
 
 // --- Interfaces ---
 interface SearchableSelectProps {

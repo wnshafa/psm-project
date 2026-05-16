@@ -1,12 +1,10 @@
 import { router } from 'expo-router';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
-import { Dimensions, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
-import { COLORS } from './src/constants/theme';
-import { auth, db } from './src/lib/firebase';
-
-const { width } = Dimensions.get('window');
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { COLORS } from '../src/constants/theme';
+import { auth } from '../src/lib/firebase';
 
 const SLIDES = [
   {
@@ -33,16 +31,24 @@ export default function OnboardingPage() {
   const [currentSlide, setCurrentSlide] = useState(0);
 
   useEffect(() => {
-    // Auth logic to skip landing if already logged in
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        if (userDoc.exists() && userDoc.data().role === 'admin') {
+    // Web = admin portal: skip onboarding, route based on auth state
+    if (Platform.OS === 'web') {
+      const unsubscribe = onAuthStateChanged(auth, async (user) => {
+        if (user) {
           router.replace('/(admin)/homePage');
         } else {
-          router.replace('/(tabs)/homePage');
+          router.replace('/(auth)/login');
         }
+      });
+      return unsubscribe;
+    }
+
+    // Mobile = client app: skip onboarding only if already logged in
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        router.replace('/(tabs)/homePage');
       }
+      // If no user on mobile, fall through and show onboarding slides
     });
     return unsubscribe;
   }, []);

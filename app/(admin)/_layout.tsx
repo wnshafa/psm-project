@@ -10,10 +10,10 @@ import { Drawer } from 'expo-router/drawer';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, Platform, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { COLORS } from '../src/constants/theme';
-import { auth, db } from '../src/lib/firebase';
+import { COLORS } from '../../src/constants/theme';
+import { auth, db } from '../../src/lib/firebase';
 
 function CustomDrawerContent(props: DrawerContentComponentProps) {
   const handleLogout = async () => {
@@ -47,6 +47,12 @@ export default function AdminLayout() {
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
   useEffect(() => {
+    // Guard: admin portal is web-only
+    if (Platform.OS !== 'web') {
+      router.replace('/(tabs)/homePage');
+      return;
+    }
+
     // 1. Listen for Auth State
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -56,9 +62,9 @@ export default function AdminLayout() {
           if (userDoc.exists() && userDoc.data().role === 'admin') {
             setIsAdmin(true);
           } else {
-            // Not an admin? Kick them out to the user side
+            // Not an admin on web? Send back to login
             setIsAdmin(false);
-            router.replace('/(tabs)/homePage');
+            router.replace('/(auth)/login');
           }
         } catch (error) {
           console.error("Role check failed:", error);

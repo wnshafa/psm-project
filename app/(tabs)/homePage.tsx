@@ -1,206 +1,124 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from 'expo-router';
-import { collection, doc, limit, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, doc, limit, onSnapshot, orderBy, query, Timestamp, where } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Dimensions,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
-import { COLORS } from '../src/constants/theme';
-import { auth, db } from '../src/lib/firebase';
-import { getAllProducts } from '../src/services/productService';
-import { Product, SkinProfile, Stats } from '../src/types';
-const SCREEN_WIDTH = Dimensions.get('window').width;
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { COLORS } from '../../src/constants/theme';
+import { auth, db } from '../../src/lib/firebase';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+type SkinMetric = { label: string; value: number; color: string };
 
-
-
-// ─── Skin Analysis Bar Chart (no external lib needed) ────────────────────────
-
-const SKIN_METRICS = [
-  { label: 'Hydration',    value: 72, color: '#4ecdc4' },
-  { label: 'Oiliness',     value: 45, color: '#ff6b6b' },
-  { label: 'Sensitivity',  value: 60, color: '#f7b731' },
-  { label: 'Brightness',   value: 80, color: '#a29bfe' },
-];
-
-function SkinAnalysisChart() {
-  const barMaxWidth = SCREEN_WIDTH - 80; // left label + padding
-
-  return (
-    <View style={chartStyles.container}>
-      {SKIN_METRICS.map((metric) => (
-        <View key={metric.label} style={chartStyles.row}>
-          <Text style={chartStyles.label}>{metric.label}</Text>
-          <View style={chartStyles.trackBackground}>
-            <View
-              style={[
-                chartStyles.trackFill,
-                {
-                  width: (metric.value / 100) * (barMaxWidth - 60),
-                  backgroundColor: metric.color,
-                },
-              ]}
-            />
-          </View>
-          <Text style={chartStyles.value}>{metric.value}%</Text>
-        </View>
-      ))}
-    </View>
-  );
-}
-
-const chartStyles = StyleSheet.create({
-  container: { gap: 10, marginTop: 10 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  label: { width: 80, fontSize: 12, color: '#666' },
-  trackBackground: {
-    flex: 1,
-    height: 10,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 5,
-    overflow: 'hidden',
-  },
-  trackFill: { height: '100%', borderRadius: 5 },
-  value: { width: 36, fontSize: 12, color: '#333', textAlign: 'right' },
-});
-
-// ─── Main Component ───────────────────────────────────────────────────────────
+const getGreeting = () => {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
+};
 
 export default function ClientDashboard() {
-  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState<Stats>({ totalCompleted: 0, streak: 0, lastRoutine: 'Never' });
-  const [pendingReminders, setPendingReminders] = useState<any[]>([]);
-  const [skinProfile, setSkinProfile] = useState<SkinProfile>({ skinType: '', skinConcern: '' });
-  const [savedProductIds, setSavedProductIds] = useState<string[]>([]);
-  const [recommendation, setRecommendation] = useState<{ message: string; categories: string[] }>({
-    message: '',
-    categories: [],
-  });
-  const [recommendedProducts, setRecommendedProducts] = useState<Product[]>([]);
+  const [userName, setUserName] = useState('');
+  const [streak, setStreak] = useState(0);
+  const [totalCompleted, setTotalCompleted] = useState(0);
+  const [routines, setRoutines] = useState<any[]>([]);
+  const [completedTodayIds, setCompletedTodayIds] = useState<string[]>([]);
+  const [latestReminder, setLatestReminder] = useState<any | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [skinMetrics, setSkinMetrics] = useState<SkinMetric[] | null>(null);
+  const [skinAnalysisDate, setSkinAnalysisDate] = useState<string | null>(null);
 
-  // ─── Toggle Save ─────────────────────────────────────────────────────────
-  const toggleSave = (productId: string) => {
-    setSavedProductIds((prev) =>
-      prev.includes(productId) ? prev.filter((id) => id !== productId) : [...prev, productId]
-    );
-  };
-
-  // ─── Effects ──────────────────────────────────────────────────────────────
   useEffect(() => {
     const user = auth.currentUser;
     if (!user) return;
 
-    // 1. Fetch products
-    const fetchProducts = async () => {
-      const data = await getAllProducts();
-      setProducts(data);
-    };
-    fetchProducts();
-
-    // 2. Fetch user profile (skin type + concern)
-    // 2. Fetch user profile (skin type + concern)
-    const unsubUser = onSnapshot(doc(db, 'clients', user.uid), (snap) => {
+    // 1. Client profile
+    const unsubClient = onSnapshot(doc(db, 'clients', user.uid), (snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        setStats({
-          streak: data.streak || 0,
-          totalCompleted: data.totalCompleted || 0,
-          lastRoutine: data.lastRoutine || 'Never',
-        });
-        setSkinProfile({
-          skinType: data.skinType || '', // Changed from 'normal'
-          skinConcern: data.skinConcern || '', // Changed from 'medium'
-        });
+        setUserName(data.fullName?.split(' ')[0] || '');
+        setStreak(data.streak || 0);
+        setTotalCompleted(data.totalCompleted || 0);
       }
     });
 
-    // 3. Fetch Active Routines (kept for future use)
-    const routineQuery = query(
-      collection(db, 'routines'),
-      where('clientId', '==', user.uid),
-      limit(2)
+    // 2. Assigned routines
+    const unsubRoutines = onSnapshot(
+      query(collection(db, 'routines'), where('clientId', '==', user.uid)),
+      (snap) => setRoutines(snap.docs.map(d => ({ id: d.id, ...d.data() })))
     );
-    const unsubRoutines = onSnapshot(routineQuery, () => {});
 
-    // 4. Fetch Pending Reminders
-    const reminderQuery = query(
-      collection(db, 'reminder'),
-      where('clientID', '==', `/clients/${user.uid}`),
-      where('status', '==', 'unread'),
-      limit(2)
+    // 3. Today's completed logs
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const unsubLogs = onSnapshot(
+      query(
+        collection(db, 'routineLogs'),
+        where('clientId', '==', user.uid),
+        where('logDate', '>=', Timestamp.fromDate(today))
+      ),
+      (snap) => setCompletedTodayIds(snap.docs.map(d => d.data().routineID))
     );
-    const unsubReminders = onSnapshot(reminderQuery, (snap) => {
-      setPendingReminders(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      setLoading(false);
-    });
+
+    // 4. Latest unread reminder + count
+    const unsubReminder = onSnapshot(
+      query(
+        collection(db, 'reminder'),
+        where('clientID', '==', `/clients/${user.uid}`),
+        where('status', '==', 'unread'),
+      ),
+      (snap) => {
+        setUnreadCount(snap.size);
+        setLatestReminder(snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() });
+        setLoading(false);
+      }
+    );
+
+    // 5. Latest skin analysis
+    const unsubSkin = onSnapshot(
+      query(
+        collection(db, 'skinLogs'),
+        where('clientId', '==', user.uid),
+        orderBy('date', 'desc'),
+        limit(1)
+      ),
+      (snap) => {
+        if (!snap.empty) {
+          const data = snap.docs[0].data();
+          setSkinMetrics([
+            { label: 'Hydration',   value: data.hydration   ?? 50, color: '#4ecdc4' },
+            { label: 'Oiliness',    value: data.oiliness    ?? 50, color: '#ff6b6b' },
+            { label: 'Sensitivity', value: data.sensitivity ?? 50, color: '#f7b731' },
+            { label: 'Brightness',  value: data.brightness  ?? 50, color: '#a29bfe' },
+          ]);
+          const date = data.date?.toDate();
+          if (date) {
+            const diff = Math.floor((Date.now() - date.getTime()) / 86400000);
+            setSkinAnalysisDate(diff === 0 ? 'Today' : diff === 1 ? 'Yesterday' : `${diff} days ago`);
+          }
+        } else {
+          setSkinMetrics(null);
+          setSkinAnalysisDate(null);
+        }
+      }
+    );
 
     return () => {
-      unsubUser();
+      unsubClient();
       unsubRoutines();
-      unsubReminders();
+      unsubLogs();
+      unsubReminder();
+      unsubSkin();
     };
   }, []);
 
-  useEffect(() => {
-
-    if (!skinProfile.skinType || products.length === 0) {
-        setRecommendedProducts([]);
-        return;
-    }
-
-    // Convert user attributes to lowercase arrays for safe matching
-    const userTypes = Array.isArray(skinProfile.skinType)
-      ? skinProfile.skinType.map(t => t.toLowerCase())
-      : [skinProfile.skinType.toLowerCase()];
-
-    const userConcerns = Array.isArray(skinProfile.skinConcern)
-      ? skinProfile.skinConcern.map(c => c.toLowerCase())
-      : [skinProfile.skinConcern.toLowerCase()];
-
-    // Filter products (Same logic as productsPage.tsx)
-    const filtered = products.filter((p) => {
-      if (!p.skinType || !p.skinConcern) return false;
-
-      const productSkinTypes = Array.isArray(p.skinType) ? p.skinType : [p.skinType];
-      const productConcerns = Array.isArray(p.skinConcern) ? p.skinConcern : [p.skinConcern];
-
-      // Safe match Skin Type
-      const matchSkinType = productSkinTypes.some((type) =>
-        type && userTypes.includes(type.toLowerCase())
-      );
-
-      // Safe match Concern
-      const matchConcern = productConcerns.some((c) =>
-        c && userConcerns.includes(c.toLowerCase())
-      );
-
-      return matchSkinType && matchConcern;
-    });
-
-    setRecommendedProducts(filtered);
-
-    // Update the message displayed on the dashboard
-    const mainTypeLabel = Array.isArray(skinProfile.skinType) 
-      ? skinProfile.skinType[0] 
-      : skinProfile.skinType;
-      
-    setRecommendation({
-      message: `Specially curated to treat your ${mainTypeLabel} skin profile.`,
-      categories: [], // We don't need this anymore with the new logic
-    });
-    
-  }, [skinProfile, products]);
-  // ─── Loading ──────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <View style={styles.center}>
@@ -209,132 +127,187 @@ export default function ClientDashboard() {
     );
   }
 
-  // ─── Render ───────────────────────────────────────────────────────────────
+  const morningRoutine = routines.find(r => r.type === 'Morning');
+  const nightRoutine = routines.find(r => r.type === 'Night');
+  const morningDone = morningRoutine ? completedTodayIds.includes(morningRoutine.id) : null;
+  const nightDone = nightRoutine ? completedTodayIds.includes(nightRoutine.id) : null;
+
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.scroll}>
 
-        {/* ── Header ── */}
+        {/* ── Greeting ── */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Dashboard</Text>
-          <Text style={styles.headerSubtitle}>Track your skincare progress</Text>
+          <View>
+            <Text style={styles.greeting}>{getGreeting()}{userName ? ',' : ''}</Text>
+            <Text style={styles.headerTitle}>{userName || 'Welcome'} 👋</Text>
+          </View>
+          <View style={styles.headerRight}>
+            <Pressable style={styles.bellBtn} onPress={() => router.push('/reminderPage')}>
+              <Ionicons name="notifications-outline" size={22} color={COLORS.textPrimary} />
+              {unreadCount > 0 && (
+                <View style={styles.badgeDot}>
+                  <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                </View>
+              )}
+            </Pressable>
+            <View style={styles.streakBadge}>
+              <Ionicons name="flame" size={18} color={COLORS.primary} />
+              <Text style={styles.streakValue}>{streak}</Text>
+            </View>
+          </View>
         </View>
 
-        {/* ── Recommended Products ── */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Recommended for you</Text>
-          <Text style={styles.sectionSubtitle}>{recommendation.message || 'Based on your skin condition, these are recommended products.'}</Text>
+        {/* ── Today's Routine ── */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Today's Routine</Text>
+          <View style={styles.routineRow}>
+            <Pressable
+              style={[styles.routineItem, morningDone === true && styles.routineDone, morningDone === null && styles.routineNA]}
+              onPress={() => router.push('/routinePage')}
+            >
+              <Ionicons
+                name={morningDone ? 'checkmark-circle' : morningDone === null ? 'remove-circle-outline' : 'sunny-outline'}
+                size={28}
+                color={morningDone ? '#4ade80' : morningDone === null ? COLORS.border : COLORS.primary}
+              />
+              <Text style={styles.routineLabel}>Morning</Text>
+              <Text style={[styles.routineStatus, { color: morningDone ? '#4ade80' : morningDone === null ? COLORS.border : COLORS.textSecondary }]}>
+                {morningDone ? 'Done' : morningDone === null ? 'Not set' : 'Pending'}
+              </Text>
+            </Pressable>
 
-          {recommendedProducts.length === 0 ? (
-            <Text style={styles.emptyText}>No recommendations available</Text>
-          ) : (
-            recommendedProducts.slice(0, 3).map((product) => {
-              const isSaved = savedProductIds.includes(product.id);
-              return (
-                <View key={product.id} style={styles.productCard}>
-                  <View style={styles.productInfo}>
-                    <Text style={styles.productTitle}>{product.name}</Text>
-                    <Text style={styles.productDescription}>{product.description}</Text>
-                  </View>
-                  <TouchableOpacity
-                    onPress={() => toggleSave(product.id)}
-                    style={styles.saveButton}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <Ionicons
-                      name={isSaved ? 'bookmark' : 'bookmark-outline'}
-                      size={20}
-                      color={isSaved ? COLORS.primary : '#aaa'}
-                    />
-                  </TouchableOpacity>
-                </View>
-              );
-            })
-          )}
-
-          <Pressable onPress={() => router.push('../productsPage')}>
-            <Text style={styles.viewAll}>View All →</Text>
-          </Pressable>
+            <Pressable
+              style={[styles.routineItem, nightDone === true && styles.routineDone, nightDone === null && styles.routineNA]}
+              onPress={() => router.push('/routinePage')}
+            >
+              <Ionicons
+                name={nightDone ? 'checkmark-circle' : nightDone === null ? 'remove-circle-outline' : 'moon-outline'}
+                size={28}
+                color={nightDone ? '#4ade80' : nightDone === null ? COLORS.border : COLORS.primary}
+              />
+              <Text style={styles.routineLabel}>Night</Text>
+              <Text style={[styles.routineStatus, { color: nightDone ? '#4ade80' : nightDone === null ? COLORS.border : COLORS.textSecondary }]}>
+                {nightDone ? 'Done' : nightDone === null ? 'Not set' : 'Pending'}
+              </Text>
+            </Pressable>
+          </View>
         </View>
 
         {/* ── Stats ── */}
-        <View style={styles.statsContainer}>
+        <View style={styles.statsRow}>
           <View style={styles.statCard}>
-            <Ionicons name="flame" size={24} color="#ff6b6b" />
-            <Text style={styles.statValue}>{stats.streak}</Text>
+            <Ionicons name="flame" size={22} color="#ff6b6b" />
+            <Text style={styles.statValue}>{streak}</Text>
             <Text style={styles.statLabel}>Day Streak</Text>
           </View>
           <View style={styles.statCard}>
-            <Ionicons name="checkmark-circle" size={24} color="#51cf66" />
-            <Text style={styles.statValue}>{stats.totalCompleted}</Text>
+            <Ionicons name="checkmark-circle" size={22} color="#51cf66" />
+            <Text style={styles.statValue}>{totalCompleted}</Text>
             <Text style={styles.statLabel}>Completed</Text>
           </View>
           <View style={styles.statCard}>
-            <Ionicons name="notifications-circle" size={24} color="#4ecdc4" />
-            <Text style={styles.statValue}>{pendingReminders.length}</Text>
-            <Text style={styles.statLabel}>Pending</Text>
+            <Ionicons name="today" size={22} color={COLORS.primary} />
+            <Text style={styles.statValue}>{completedTodayIds.length}/{routines.length}</Text>
+            <Text style={styles.statLabel}>Today</Text>
           </View>
         </View>
 
-        {/* ── Skin Analysis Graph ── */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Skin Analysis</Text>
-          <Text style={styles.sectionSubtitle}>Your latest skin health overview</Text>
-          <SkinAnalysisChart />
-        </View>
+        {/* ── Latest Reminder ── */}
+        {latestReminder && (
+          <Pressable style={styles.reminderCard} onPress={() => router.push('/reminderPage')}>
+            <View style={styles.reminderIcon}>
+              <Ionicons name="notifications" size={20} color={COLORS.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.reminderTitle}>{latestReminder.templateTitle || 'New Reminder'}</Text>
+              <Text style={styles.reminderMsg} numberOfLines={1}>{latestReminder.message}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={COLORS.textSecondary} />
+          </Pressable>
+        )}
+
+        {/* ── Skin Summary ── */}
+        <Pressable style={styles.card} onPress={() => router.push('/skinChartAnalysis')}>
+          <View style={styles.skinHeader}>
+            <Text style={styles.cardTitle}>Skin Analysis</Text>
+            <Text style={styles.skinDate}>{skinAnalysisDate ?? 'Not scanned'}</Text>
+          </View>
+          {skinMetrics ? (
+            <View style={styles.skinBars}>
+              {skinMetrics.map((m) => (
+                <View key={m.label} style={styles.skinBarRow}>
+                  <Text style={styles.skinBarLabel}>{m.label}</Text>
+                  <View style={styles.skinTrack}>
+                    <View style={[styles.skinFill, { flex: m.value / 100, backgroundColor: m.color }]} />
+                    <View style={{ flex: 1 - m.value / 100 }} />
+                  </View>
+                  <Text style={styles.skinBarValue}>{m.value}%</Text>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.skinEmpty}>
+              <Ionicons name="camera-outline" size={24} color={COLORS.border} />
+              <Text style={styles.skinEmptyText}>Tap to scan your skin</Text>
+            </View>
+          )}
+        </Pressable>
 
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.background },
-  scroll: { padding: 20, gap: 16, paddingBottom: 40 },
+  scroll: { padding: 20, gap: 14, paddingBottom: 40 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
   // Header
-  header: { marginBottom: 4 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  greeting: { fontSize: 14, color: COLORS.textSecondary, fontWeight: '500' },
   headerTitle: { fontSize: 28, fontWeight: '800', color: COLORS.textPrimary },
-  headerSubtitle: { fontSize: 14, color: COLORS.textSecondary },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  bellBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border },
+  badgeDot: { position: 'absolute', top: -2, right: -2, backgroundColor: '#e63946', borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
+  badgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
+  streakBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: COLORS.card, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: COLORS.border },
+  streakValue: { fontSize: 16, fontWeight: '800', color: COLORS.primary },
 
-  // Section
-  section: {
-    backgroundColor: COLORS.card,
-    borderRadius: 14,
-    padding: 16,
-  },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary },
-  sectionSubtitle: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2, marginBottom: 10 },
+  // Card
+  card: { backgroundColor: COLORS.card, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: COLORS.border },
+  cardTitle: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 },
 
-  // Product Card
-  productCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.background,
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 8,
-  },
-  productInfo: { flex: 1 },
-  productTitle: { fontWeight: '700', fontSize: 14, color: COLORS.textPrimary },
-  productDescription: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
-  saveButton: { paddingLeft: 10 },
-
-  viewAll: { color: COLORS.primary, marginTop: 8, fontWeight: '600' },
-  emptyText: { fontSize: 12, color: COLORS.textSecondary },
+  // Routine
+  routineRow: { flexDirection: 'row', gap: 10 },
+  routineItem: { flex: 1, alignItems: 'center', padding: 14, borderRadius: 12, backgroundColor: COLORS.background, borderWidth: 1, borderColor: COLORS.border, gap: 6 },
+  routineDone: { borderColor: '#4ade80', backgroundColor: 'rgba(74, 222, 128, 0.05)' },
+  routineNA: { opacity: 0.5 },
+  routineLabel: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary },
+  routineStatus: { fontSize: 11, fontWeight: '600' },
 
   // Stats
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    backgroundColor: COLORS.card,
-    borderRadius: 14,
-    padding: 16,
-  },
-  statCard: { flex: 1, alignItems: 'center', gap: 4 },
-  statValue: { fontSize: 18, fontWeight: '700', color: COLORS.textPrimary },
-  statLabel: { fontSize: 11, color: COLORS.textSecondary },
+  statsRow: { flexDirection: 'row', gap: 10 },
+  statCard: { flex: 1, backgroundColor: COLORS.card, borderRadius: 16, padding: 14, alignItems: 'center', gap: 4, borderWidth: 1, borderColor: COLORS.border },
+  statValue: { fontSize: 18, fontWeight: '800', color: COLORS.textPrimary },
+  statLabel: { fontSize: 10, color: COLORS.textSecondary, textTransform: 'uppercase', fontWeight: '600' },
+
+  // Reminder
+  reminderCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(212, 165, 116, 0.1)', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: COLORS.primary, gap: 12 },
+  reminderIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(212, 165, 116, 0.2)', alignItems: 'center', justifyContent: 'center' },
+  reminderTitle: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary },
+  reminderMsg: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
+
+  // Skin
+  skinHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  skinDate: { fontSize: 11, color: COLORS.textSecondary, fontWeight: '600' },
+  skinBars: { gap: 8 },
+  skinBarRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  skinBarLabel: { width: 72, fontSize: 11, color: COLORS.textSecondary },
+  skinTrack: { flex: 1, flexDirection: 'row', height: 8, backgroundColor: COLORS.inputBackground, borderRadius: 4, overflow: 'hidden' },
+  skinFill: { height: '100%', borderRadius: 4, minWidth: 4 },
+  skinBarValue: { width: 32, fontSize: 11, fontWeight: '700', color: COLORS.textPrimary, textAlign: 'right' },
+  skinEmpty: { alignItems: 'center', paddingVertical: 16, gap: 8 },
+  skinEmptyText: { fontSize: 12, color: COLORS.textSecondary },
 });

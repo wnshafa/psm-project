@@ -14,15 +14,15 @@ import {
     ActivityIndicator,
     Pressable,
     RefreshControl,
-    SafeAreaView,
     ScrollView,
     StyleSheet,
     Text,
     View
 } from "react-native";
-import { COLORS } from "../src/constants/theme";
-import { auth, db } from "../src/lib/firebase";
-import { ReminderLog } from '../src/types';
+import { SafeAreaView } from "react-native-safe-area-context";
+import { COLORS } from "../../src/constants/theme";
+import { auth, db } from "../../src/lib/firebase";
+import { ReminderLog } from '../../src/types';
 
 export default function DisplayReminders() {
     const [reminders, setReminders] = useState<ReminderLog[]>([]);
@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
     screen: { flex: 1, backgroundColor: COLORS.background },
     scroll: { padding: 20, paddingBottom: 40 },
     headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-    headerTitle: { fontSize: 24, fontWeight: "800", color: COLORS.textPrimary },
+    headerTitle: { fontSize: 28, fontWeight: '800', color: COLORS.textPrimary },
     clearAllText: { color: COLORS.primary, fontWeight: '700' },
     list: { gap: 15 },
     card: { backgroundColor: COLORS.card, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: COLORS.border },

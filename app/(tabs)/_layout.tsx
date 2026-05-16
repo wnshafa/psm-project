@@ -1,59 +1,58 @@
-import { Ionicons } from '@expo/vector-icons';
-import { Tabs, useRouter } from 'expo-router';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
+import { Badge, Icon, Label, NativeTabs, VectorIcon } from 'expo-router/unstable-native-tabs';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, onSnapshot, query, where } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, View } from 'react-native'; // Added Platform
-import { COLORS } from '../src/constants/theme';
-import { auth, db } from '../src/lib/firebase';
+import { ActivityIndicator, Platform, View } from 'react-native';
+import { COLORS } from '../../src/constants/theme';
+import { auth, db } from '../../src/lib/firebase';
 
 export default function TabLayout() {
   const [isClient, setIsClient] = useState<boolean | null>(null);
-  const router = useRouter();
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
+    if (Platform.OS === 'web') {
+      router.replace('/(admin)/homePage');
+      return;
+    }
+
+    let unsubReminders: (() => void) | null = null;
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
           const userDoc = await getDoc(doc(db, 'users', user.uid));
           const userData = userDoc.data();
-
           if (userData?.role === 'client' || !userData?.role) {
             setIsClient(true);
+            // Listen for unread reminders to show badge
+            unsubReminders = onSnapshot(
+              query(
+                collection(db, 'reminder'),
+                where('clientID', '==', `/clients/${user.uid}`),
+                where('status', '==', 'unread')
+              ),
+              (snap) => setUnreadCount(snap.size)
+            );
           } else if (userData?.role === 'admin') {
             setIsClient(false);
             router.replace('/(admin)/homePage');
           }
-        } catch (error) {
-          console.error("Session check error:", error);
-          handleNavigationToLogin();
+        } catch {
+          router.replace('/(auth)/login');
         }
       } else {
-        handleNavigationToLogin();
+        router.replace('/(auth)/login');
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      unsubReminders?.();
+    };
   }, []);
-
-  // Helper function to handle web vs mobile redirection
-  const handleNavigationToLogin = () => {
-    if (Platform.OS === 'web') {
-      // Force refresh on web to clear memory
-      window.location.href = '/(auth)/login';
-    } else {
-      router.replace('/(auth)/login');
-    }
-  };
-
-  const getTabBarHeight = () => {
-    if (Platform.OS === 'ios') {
-      return 90; // iOS has safe area
-    } else if (Platform.OS === 'android') {
-      return 70; // Android standard
-    }
-    return 60; // Default/web
-  };
 
   if (isClient === null) {
     return (
@@ -64,83 +63,66 @@ export default function TabLayout() {
   }
 
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: COLORS.textPrimary,
-        tabBarInactiveTintColor: COLORS.textSecondary,
-        tabBarStyle: {
-          backgroundColor: COLORS.card,
-          borderTopColor: COLORS.border,
-          height: getTabBarHeight(),
-          paddingBottom: Platform.OS === 'ios' ? 24 : 12,
-          paddingTop: 8,
-        },
-        tabBarLabelStyle: {
-          fontSize: 10,
-          fontWeight: '600',
-        },
-        sceneContainerStyle: {
-          paddingBottom: 20,
-        },
-      }}
-    >
-      <Tabs.Screen
-        name="homePage"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'home' : 'home-outline'} size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="routinePage"
-        options={{
-          title: 'Routine',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'sparkles' : 'sparkles-outline'} size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="reminderPage"
-        options={{
-          title: 'Reminders',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'notifications' : 'notifications-outline'} size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="productsPage"
-        options={{
-          title: 'Products',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'cart' : 'cart-outline'} size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="skinChartAnalysis"
-        options={{
-          title: 'Skin Analysis',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'bar-chart' : 'bar-chart-outline'} size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="userProfile"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'person' : 'person-outline'} size={size} color={color} />
-          ),
-        }}
-      />
+    <NativeTabs>
 
-    </Tabs>
-    
+      <NativeTabs.Trigger name="homePage">
+        <Icon
+          sf={{ default: 'house', selected: 'house.fill' }}
+          androidSrc={{
+            default: <VectorIcon family={Ionicons} name="home-outline" />,
+            selected: <VectorIcon family={Ionicons} name="home" />,
+          }}
+        />
+        <Label>Home</Label>
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="routinePage">
+        <Icon
+          sf={{ default: 'clipboard', selected: 'clipboard.fill' }}
+          androidSrc={{
+            default: <VectorIcon family={Ionicons} name="clipboard-outline" />,
+            selected: <VectorIcon family={Ionicons} name="clipboard" />,
+          }}
+        />
+        <Label>Routine</Label>
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="skinChartAnalysis">
+        <Icon
+          sf={{ default: 'sparkles', selected: 'sparkles' }}
+          androidSrc={{
+            default: <VectorIcon family={Ionicons} name="sparkles-outline" />,
+            selected: <VectorIcon family={Ionicons} name="sparkles" />,
+          }}
+        />
+        <Label>Analysis</Label>
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="productsPage">
+        <Icon
+          sf={{ default: 'bag', selected: 'bag.fill' }}
+          androidSrc={{
+            default: <VectorIcon family={Ionicons} name="bag-outline" />,
+            selected: <VectorIcon family={Ionicons} name="bag" />,
+          }}
+        />
+        <Label>Products</Label>
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="userProfile">
+        <Icon
+          sf={{ default: 'person', selected: 'person.fill' }}
+          androidSrc={{
+            default: <VectorIcon family={Ionicons} name="person-outline" />,
+            selected: <VectorIcon family={Ionicons} name="person" />,
+          }}
+        />
+        <Label>Profile</Label>
+      </NativeTabs.Trigger>
+
+      {/* Hidden — reportPage not yet implemented */}
+      <NativeTabs.Trigger name="reportPage" hidden />
+
+    </NativeTabs>
   );
 }

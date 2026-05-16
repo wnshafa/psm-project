@@ -17,15 +17,15 @@ import {
     ActivityIndicator,
     Alert,
     Pressable,
-    SafeAreaView,
     ScrollView,
     StyleSheet,
     Text,
     TextInput,
     View
 } from "react-native";
-import { COLORS } from "../src/constants/theme";
-import { auth, db } from "../src/lib/firebase";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { COLORS } from "../../src/constants/theme";
+import { auth, db } from "../../src/lib/firebase";
 
 const isTimeValid = (type: string) => {
     const hour = new Date().getHours();
@@ -147,7 +147,6 @@ export default function DisplayRoutine() {
             <ScrollView contentContainerStyle={styles.scroll}>
                 <View style={styles.headerContainer}>
                     <View>
-                        <Text style={styles.headerSubtitle}>Welcome back,</Text>
                         <Text style={styles.headerTitle}>Daily Journal</Text>
                     </View>
                     <View style={styles.streakBadge}>
@@ -244,7 +243,7 @@ const styles = StyleSheet.create({
     scroll: { padding: 20 },
     headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 30 },
     headerSubtitle: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '600' },
-    headerTitle: { fontSize: 28, fontWeight: "900", color: COLORS.textPrimary },
+    headerTitle: { fontSize: 28, fontWeight: '800', color: COLORS.textPrimary },
     streakBadge: { backgroundColor: COLORS.card, paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: COLORS.primary },
     streakText: { color: COLORS.primary, fontWeight: '900', fontSize: 18 },
     list: { gap: 15 },

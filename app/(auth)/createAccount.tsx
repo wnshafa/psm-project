@@ -9,7 +9,6 @@ import {
   Image,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,8 +16,9 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { COLORS } from "../src/constants/theme";
-import { auth, db } from "../src/lib/firebase";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { COLORS } from "../../src/constants/theme";
+import { auth, db } from "../../src/lib/firebase";
 
 export default function CreateAccount() {
   const { width } = useWindowDimensions();
@@ -98,8 +98,8 @@ export default function CreateAccount() {
           
           {/* LEFT SIDE: BRANDING */}
           <View style={[styles.brandingSection, { backgroundColor: PRESTIGE_NAVY }, isDesktop ? styles.halfWidth : styles.fullWidth]}>
-            <Image 
- 
+            <Image
+              source={require('../../assets/images/prestige_logo.png')}
               style={isDesktop ? styles.logoWeb : styles.logoMobile}
               resizeMode="contain"
             />

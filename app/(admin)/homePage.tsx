@@ -3,15 +3,15 @@ import { collection, onSnapshot, orderBy, query, Timestamp, where } from 'fireba
 import React, { useEffect, useState } from 'react';
 import {
   Pressable,
-  RefreshControl, // Add this
-  SafeAreaView,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View
 } from "react-native";
-import { BORDER_RADIUS, COLORS, SPACING } from '../src/constants/theme';
-import { db } from '../src/lib/firebase';
+import { SafeAreaView } from "react-native-safe-area-context";
+import { BORDER_RADIUS, COLORS, SPACING } from '../../src/constants/theme';
+import { db } from '../../src/lib/firebase';
 
 export default function AdminHomePage() {
   const [rawLogs, setRawLogs] = useState<any[]>([]);

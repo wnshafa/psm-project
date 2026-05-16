@@ -19,15 +19,15 @@ import {
   Modal,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View
 } from "react-native";
-import { COLORS } from "../src/constants/theme";
-import { db } from "../src/lib/firebase";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { COLORS } from "../../src/constants/theme";
+import { db } from "../../src/lib/firebase";
 
 // --- Helper Component: Searchable Selection Modal ---
 interface SearchableSelectProps {

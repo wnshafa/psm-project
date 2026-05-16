@@ -20,16 +20,16 @@ import {
   Image,
   Modal,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View
 } from "react-native";
-import { BORDER_RADIUS, COLORS, FONT_SIZE, SPACING } from "../src/constants/theme";
-import { db } from "../src/lib/firebase";
-import { SkinPhoto, UserData, UserLog } from "../src/types";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { BORDER_RADIUS, COLORS, FONT_SIZE, SPACING } from "../../src/constants/theme";
+import { db } from "../../src/lib/firebase";
+import { SkinPhoto, UserData, UserLog } from "../../src/types";
 
 export default function UserProgress() {
   const [users, setUsers] = useState<UserData[]>([]);
@@ -96,8 +96,8 @@ export default function UserProgress() {
 
     // Fetch Text Logs
     const logQuery = query(
-      collection(db, 'routineLogs'), 
-      where('userId', '==', selectedUser.id),
+      collection(db, 'routineLogs'),
+      where('clientId', '==', selectedUser.id),
       orderBy('logDate', 'desc')
     );
 
@@ -112,7 +112,7 @@ export default function UserProgress() {
     // Fetch Skin Photos
     const photoQuery = query(
       collection(db, 'skinLogs'),
-      where('userId', '==', selectedUser.id),
+      where('clientId', '==', selectedUser.id),
       orderBy('date', 'desc')
     );
 
