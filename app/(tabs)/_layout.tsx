@@ -65,63 +65,63 @@ export default function TabLayout() {
   return (
     <NativeTabs>
 
-      <NativeTabs.Trigger name="homePage">
-        <Icon
-          sf={{ default: 'house', selected: 'house.fill' }}
-          androidSrc={{
-            default: <VectorIcon family={Ionicons} name="home-outline" />,
-            selected: <VectorIcon family={Ionicons} name="home" />,
-          }}
-        />
-        <Label>Home</Label>
-      </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="homePage">
+          <Icon
+            sf={{ default: 'house', selected: 'house.fill' }}
+            androidSrc={{
+              default: <VectorIcon family={Ionicons} name="home-outline" />,
+              selected: <VectorIcon family={Ionicons} name="home" />,
+            }}
+          />
+          <Label>Home</Label>
+        </NativeTabs.Trigger>
 
-      <NativeTabs.Trigger name="routinePage">
-        <Icon
-          sf={{ default: 'clipboard', selected: 'clipboard.fill' }}
-          androidSrc={{
-            default: <VectorIcon family={Ionicons} name="clipboard-outline" />,
-            selected: <VectorIcon family={Ionicons} name="clipboard" />,
-          }}
-        />
-        <Label>Routine</Label>
-      </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="routinePage">
+          <Icon
+            sf={{ default: 'clipboard', selected: 'clipboard.fill' }}
+            androidSrc={{
+              default: <VectorIcon family={Ionicons} name="clipboard-outline" />,
+              selected: <VectorIcon family={Ionicons} name="clipboard" />,
+            }}
+          />
+          <Label>Routine</Label>
+        </NativeTabs.Trigger>
 
-      <NativeTabs.Trigger name="skinChartAnalysis">
-        <Icon
-          sf={{ default: 'sparkles', selected: 'sparkles' }}
-          androidSrc={{
-            default: <VectorIcon family={Ionicons} name="sparkles-outline" />,
-            selected: <VectorIcon family={Ionicons} name="sparkles" />,
-          }}
-        />
-        <Label>Analysis</Label>
-      </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="skinChartAnalysis">
+          <Icon
+            sf={{ default: 'sparkles', selected: 'sparkles' }}
+            androidSrc={{
+              default: <VectorIcon family={Ionicons} name="sparkles-outline" />,
+              selected: <VectorIcon family={Ionicons} name="sparkles" />,
+            }}
+          />
+          <Label>Analysis</Label>
+        </NativeTabs.Trigger>
 
-      <NativeTabs.Trigger name="productsPage">
-        <Icon
-          sf={{ default: 'bag', selected: 'bag.fill' }}
-          androidSrc={{
-            default: <VectorIcon family={Ionicons} name="bag-outline" />,
-            selected: <VectorIcon family={Ionicons} name="bag" />,
-          }}
-        />
-        <Label>Products</Label>
-      </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="productsPage">
+          <Icon
+            sf={{ default: 'bag', selected: 'bag.fill' }}
+            androidSrc={{
+              default: <VectorIcon family={Ionicons} name="bag-outline" />,
+              selected: <VectorIcon family={Ionicons} name="bag" />,
+            }}
+          />
+          <Label>Products</Label>
+        </NativeTabs.Trigger>
 
-      <NativeTabs.Trigger name="userProfile">
-        <Icon
-          sf={{ default: 'person', selected: 'person.fill' }}
-          androidSrc={{
-            default: <VectorIcon family={Ionicons} name="person-outline" />,
-            selected: <VectorIcon family={Ionicons} name="person" />,
-          }}
-        />
-        <Label>Profile</Label>
-      </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="userProfile">
+          <Icon
+            sf={{ default: 'person', selected: 'person.fill' }}
+            androidSrc={{
+              default: <VectorIcon family={Ionicons} name="person-outline" />,
+              selected: <VectorIcon family={Ionicons} name="person" />,
+            }}
+          />
+          <Label>Profile</Label>
+        </NativeTabs.Trigger>
 
-      {/* Hidden — reportPage not yet implemented */}
-      <NativeTabs.Trigger name="reportPage" hidden />
+        {/* Hidden — reportPage not yet implemented */}
+        <NativeTabs.Trigger name="reportPage" hidden />
 
     </NativeTabs>
   );

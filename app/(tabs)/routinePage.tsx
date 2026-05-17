@@ -150,7 +150,7 @@ export default function DisplayRoutine() {
                         <Text style={styles.headerTitle}>Daily Journal</Text>
                     </View>
                     <View style={styles.streakBadge}>
-                        <Ionicons name="flame" size={20} color={COLORS.primary} />
+                        <Ionicons name="flame" size={18} color={COLORS.primary} />
                         <Text style={styles.streakText}>{clientData?.streak || 0}</Text>
                     </View>
                 </View>
@@ -244,8 +244,8 @@ const styles = StyleSheet.create({
     headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 30 },
     headerSubtitle: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '600' },
     headerTitle: { fontSize: 28, fontWeight: '800', color: COLORS.textPrimary },
-    streakBadge: { backgroundColor: COLORS.card, paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: COLORS.primary },
-    streakText: { color: COLORS.primary, fontWeight: '900', fontSize: 18 },
+    streakBadge: { backgroundColor: COLORS.card, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: COLORS.primary },
+    streakText: { color: COLORS.primary, fontWeight: '900', fontSize: 16 },
     list: { gap: 15 },
     card: { backgroundColor: COLORS.card, borderRadius: 24, padding: 20, borderWidth: 1, borderColor: COLORS.border },
     cardFocused: { borderColor: COLORS.primary, backgroundColor: COLORS.inputBackground },

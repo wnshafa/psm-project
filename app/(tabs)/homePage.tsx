@@ -1,10 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from 'expo-router';
-import { collection, doc, limit, onSnapshot, orderBy, query, Timestamp, where } from 'firebase/firestore';
+import { collection, doc, limit, onSnapshot, orderBy, query, Timestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS } from '../../src/constants/theme';
 import { auth, db } from '../../src/lib/firebase';
+import { ReminderLog } from '../../src/types';
 
 type SkinMetric = { label: string; value: number; color: string };
 
@@ -34,6 +37,8 @@ export default function ClientDashboard() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [skinMetrics, setSkinMetrics] = useState<SkinMetric[] | null>(null);
   const [skinAnalysisDate, setSkinAnalysisDate] = useState<string | null>(null);
+  const [reminders, setReminders] = useState<ReminderLog[]>([]);
+  const [reminderModalVisible, setReminderModalVisible] = useState(false);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -77,6 +82,8 @@ export default function ClientDashboard() {
       (snap) => {
         setUnreadCount(snap.size);
         setLatestReminder(snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() });
+        const list = snap.docs.map(d => ({ id: d.id, ...d.data() })) as ReminderLog[];
+        setReminders(list.sort((a, b) => (b.date?.seconds || 0) - (a.date?.seconds || 0)));
         setLoading(false);
       }
     );
@@ -127,6 +134,31 @@ export default function ClientDashboard() {
     );
   }
 
+  const markAsRead = async (reminderId: string) => {
+    try {
+      await updateDoc(doc(db, 'reminder', reminderId), { status: 'read' });
+    } catch (error) {
+      console.error("Error marking as read:", error);
+    }
+  };
+
+  const markAllAsRead = async () => {
+    if (reminders.length === 0) return;
+    try {
+      const batch = writeBatch(db);
+      reminders.forEach((rem) => batch.update(doc(db, 'reminder', rem.id), { status: 'read' }));
+      await batch.commit();
+    } catch (error) {
+      console.error("Error clearing all:", error);
+    }
+  };
+
+  const formatDate = (ts: any) => {
+    if (!ts) return '';
+    const date = ts.toDate();
+    return date.toLocaleDateString() + ' at ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
   const morningRoutine = routines.find(r => r.type === 'Morning');
   const nightRoutine = routines.find(r => r.type === 'Night');
   const morningDone = morningRoutine ? completedTodayIds.includes(morningRoutine.id) : null;
@@ -143,7 +175,7 @@ export default function ClientDashboard() {
             <Text style={styles.headerTitle}>{userName || 'Welcome'} 👋</Text>
           </View>
           <View style={styles.headerRight}>
-            <Pressable style={styles.bellBtn} onPress={() => router.push('/reminderPage')}>
+            <Pressable style={styles.bellBtn} onPress={() => setReminderModalVisible(true)}>
               <Ionicons name="notifications-outline" size={22} color={COLORS.textPrimary} />
               {unreadCount > 0 && (
                 <View style={styles.badgeDot}>
@@ -215,7 +247,7 @@ export default function ClientDashboard() {
 
         {/* ── Latest Reminder ── */}
         {latestReminder && (
-          <Pressable style={styles.reminderCard} onPress={() => router.push('/reminderPage')}>
+          <Pressable style={styles.reminderCard} onPress={() => setReminderModalVisible(true)}>
             <View style={styles.reminderIcon}>
               <Ionicons name="notifications" size={20} color={COLORS.primary} />
             </View>
@@ -255,6 +287,73 @@ export default function ClientDashboard() {
         </Pressable>
 
       </ScrollView>
+
+      <Modal
+        visible={reminderModalVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setReminderModalVisible(false)}
+      >
+        <SafeAreaView style={styles.screen}>
+          <ScrollView contentContainerStyle={styles.modalScroll}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Notifications</Text>
+                {reminders.length > 0 && (
+                  <Text style={styles.modalSubtitle}>{reminders.length} unread</Text>
+                )}
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                {reminders.length > 0 && (
+                  <Pressable style={styles.clearBtn} onPress={markAllAsRead}>
+                    <Text style={styles.clearBtnText}>Clear all</Text>
+                  </Pressable>
+                )}
+                <Pressable style={styles.closeBtn} onPress={() => setReminderModalVisible(false)}>
+                  <Ionicons name="close" size={18} color={COLORS.textSecondary} />
+                </Pressable>
+              </View>
+            </View>
+
+            {reminders.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <View style={styles.emptyIconWrap}>
+                  <Ionicons name="notifications-off-outline" size={32} color={COLORS.textSecondary} />
+                </View>
+                <Text style={styles.emptyTitle}>All caught up!</Text>
+                <Text style={styles.emptyHint}>No new notifications from your consultant.</Text>
+              </View>
+            ) : (
+              <View style={styles.notifList}>
+                {reminders.map((reminder, index) => (
+                  <View key={reminder.id}>
+                    <View style={styles.notifItem}>
+                      <View style={styles.notifIconWrap}>
+                        <Ionicons name="notifications" size={16} color={COLORS.primary} />
+                      </View>
+                      <View style={{ flex: 1, gap: 4 }}>
+                        <Text style={styles.notifTitle}>{reminder.templateTitle || 'Routine Alert'}</Text>
+                        <Text style={styles.notifMessage}>{reminder.message || 'Your consultant sent a new reminder.'}</Text>
+                        <Text style={styles.notifDate}>{formatDate(reminder.date)}</Text>
+                        <View style={styles.notifActions}>
+                          <Pressable style={styles.notifPrimaryBtn} onPress={() => { setReminderModalVisible(false); router.push('/(tabs)/routinePage'); }}>
+                            <Text style={styles.notifPrimaryText}>View Routine</Text>
+                          </Pressable>
+                          <Pressable style={styles.notifDismissBtn} onPress={() => markAsRead(reminder.id)}>
+                            <Text style={styles.notifDismissText}>Dismiss</Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                    </View>
+                    {index < reminders.length - 1 && <View style={styles.divider} />}
+                  </View>
+                ))}
+              </View>
+            )}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -272,8 +371,8 @@ const styles = StyleSheet.create({
   bellBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border },
   badgeDot: { position: 'absolute', top: -2, right: -2, backgroundColor: '#e63946', borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
   badgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
-  streakBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: COLORS.card, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: COLORS.border },
-  streakValue: { fontSize: 16, fontWeight: '800', color: COLORS.primary },
+  streakBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.card, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: COLORS.primary },
+  streakValue: { fontSize: 16, fontWeight: '900', color: COLORS.primary },
 
   // Card
   card: { backgroundColor: COLORS.card, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: COLORS.border },
@@ -310,4 +409,29 @@ const styles = StyleSheet.create({
   skinBarValue: { width: 32, fontSize: 11, fontWeight: '700', color: COLORS.textPrimary, textAlign: 'right' },
   skinEmpty: { alignItems: 'center', paddingVertical: 16, gap: 8 },
   skinEmptyText: { fontSize: 12, color: COLORS.textSecondary },
+
+  // Reminder modal
+  modalScroll: { padding: 20, paddingBottom: 40 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 },
+  modalTitle: { fontSize: 22, fontWeight: '800', color: COLORS.textPrimary },
+  modalSubtitle: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
+  clearBtn: { backgroundColor: COLORS.inputBackground, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  clearBtnText: { fontSize: 12, color: COLORS.textSecondary, fontWeight: '600' },
+  closeBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.inputBackground, alignItems: 'center', justifyContent: 'center' },
+  notifList: { borderRadius: 18, overflow: 'hidden', backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
+  notifItem: { flexDirection: 'row', gap: 14, paddingHorizontal: 16, paddingVertical: 16 },
+  notifIconWrap: { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(255,139,167,0.1)', alignItems: 'center', justifyContent: 'center', marginTop: 2 },
+  notifTitle: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary },
+  notifMessage: { fontSize: 13, color: COLORS.textSecondary, lineHeight: 19 },
+  notifDate: { fontSize: 11, color: COLORS.textSecondary, fontWeight: '400' },
+  notifActions: { flexDirection: 'row', gap: 8, marginTop: 6, alignSelf: 'stretch' },
+  notifPrimaryBtn: { flex: 1, backgroundColor: COLORS.primary, paddingVertical: 11, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  notifPrimaryText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+  notifDismissBtn: { flex: 1, paddingVertical: 11, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border },
+  notifDismissText: { fontSize: 13, color: COLORS.textSecondary, fontWeight: '700' },
+  divider: { height: 1, backgroundColor: COLORS.border, marginLeft: 64 },
+  emptyContainer: { alignItems: 'center', marginTop: 80, gap: 12 },
+  emptyIconWrap: { width: 64, height: 64, borderRadius: 32, backgroundColor: COLORS.inputBackground, alignItems: 'center', justifyContent: 'center' },
+  emptyTitle: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary },
+  emptyHint: { fontSize: 13, color: COLORS.textSecondary, textAlign: 'center' },
 });

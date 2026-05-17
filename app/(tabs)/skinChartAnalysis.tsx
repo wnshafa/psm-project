@@ -113,25 +113,46 @@ export default function SkinAnalysisPage() {
     }
   };
 
-  const randomScore = (min: number, max: number) =>
-    Math.floor(Math.random() * (max - min + 1)) + min;
-
-  const analyzeImage = async (_base64Image: string, imageUri: string) => {
+  const analyzeImage = async (base64Image: string, imageUri: string) => {
     setIsAnalyzing(true);
     try {
-      // Simulate processing delay
-      await new Promise((resolve) => setTimeout(resolve, 2500));
+      const prompt = `You are a professional skin analysis AI. Analyze this facial skin photo and return ONLY a valid JSON object with these 4 scores (integers from 0 to 100):
+{
+  "hydration": <how hydrated the skin looks, 100 = very plump/dewy, 0 = very dry/flaky>,
+  "oiliness": <how oily the skin looks, 100 = very shiny/oily, 0 = completely matte>,
+  "sensitivity": <signs of sensitivity like redness/irritation, 100 = very red/irritated, 0 = calm>,
+  "brightness": <overall skin radiance, 100 = very bright/glowing, 0 = dull/uneven>
+}
+Return ONLY the JSON. No explanation, no markdown.`;
 
-      const scores = {
-        hydration:   randomScore(55, 90),
-        oiliness:    randomScore(30, 75),
-        sensitivity: randomScore(20, 70),
-        brightness:  randomScore(60, 92),
-      };
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [
+                { text: prompt },
+                { inline_data: { mime_type: 'image/jpeg', data: base64Image } },
+              ],
+            }],
+            generationConfig: { temperature: 0.1 },
+          }),
+        }
+      );
+
+      const data = await response.json();
+      console.log('Gemini response:', JSON.stringify(data, null, 2));
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error('No JSON in response');
+
+      const scores = JSON.parse(jsonMatch[0]);
 
       const newMetrics = METRIC_CONFIG.map(m => ({
         ...m,
-        value: scores[m.label.toLowerCase() as keyof typeof scores],
+        value: Math.min(100, Math.max(0, Math.round(scores[m.label.toLowerCase()] ?? 50))),
       }));
       setMetrics(newMetrics);
 
@@ -144,14 +165,15 @@ export default function SkinAnalysisPage() {
           clientId: user.uid,
           date: Timestamp.now(),
           imageUrl: imageUri,
-          hydration:   scores.hydration,
-          oiliness:    scores.oiliness,
-          sensitivity: scores.sensitivity,
-          brightness:  scores.brightness,
+          hydration:   newMetrics[0].value,
+          oiliness:    newMetrics[1].value,
+          sensitivity: newMetrics[2].value,
+          brightness:  newMetrics[3].value,
         });
       }
-    } catch {
-      Alert.alert('Analysis Failed', 'Something went wrong. Please try again.');
+    } catch (err: any) {
+      console.error('Analysis error:', err?.message ?? err);
+      Alert.alert('Analysis Failed', err?.message ?? 'Could not analyse the image. Please try again.');
     } finally {
       setIsAnalyzing(false);
     }
