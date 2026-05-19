@@ -167,8 +167,8 @@ export default function UserProfile() {
     ]);
   };
 
-  const skinTypeStyle = SKIN_TYPE_COLORS[skinType.toLowerCase()] ?? { bg: COLORS.inputBackground, text: COLORS.textSecondary };
-  const skinConcernStyle = CONCERN_COLORS[skinConcern.toLowerCase()] ?? { bg: COLORS.inputBackground, text: COLORS.textSecondary };
+  const skinTypeStyle = SKIN_TYPE_COLORS[skinType?.toLowerCase() ?? ''] ?? { bg: COLORS.inputBackground, text: COLORS.textSecondary };
+  const skinConcernStyle = CONCERN_COLORS[skinConcern?.toLowerCase() ?? ''] ?? { bg: COLORS.inputBackground, text: COLORS.textSecondary };
 
   const weeklyCompleted = weeklyLogs.filter(l => l.status === 'completed').length;
   const adherencePct = weeklyLogs.length > 0 ? Math.round((weeklyCompleted / weeklyLogs.length) * 100) : 0;
