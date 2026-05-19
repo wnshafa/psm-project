@@ -26,7 +26,7 @@ import {
   View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { COLORS } from "../../src/constants/theme";
+import { COLORS } from '../../src/constants/theme';
 import { db } from "../../src/lib/firebase";
 
 // --- Helper Component: Searchable Selection Modal ---

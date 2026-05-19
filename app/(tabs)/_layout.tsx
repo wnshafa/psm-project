@@ -85,6 +85,7 @@ export default function TabLayout() {
             }}
           />
           <Label>Routine</Label>
+          {unreadCount > 0 && <Badge>{unreadCount > 9 ? '9+' : String(unreadCount)}</Badge>}
         </NativeTabs.Trigger>
 
         <NativeTabs.Trigger name="skinChartAnalysis">

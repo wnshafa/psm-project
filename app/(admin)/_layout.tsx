@@ -2,10 +2,10 @@ import { Ionicons } from '@expo/vector-icons';
 import {
   DrawerContentComponentProps,
   DrawerContentScrollView,
-  DrawerItem,
   DrawerItemList
 } from '@react-navigation/drawer';
 import { router } from 'expo-router';
+import { Pressable, Text } from 'react-native';
 import { Drawer } from 'expo-router/drawer';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
@@ -29,16 +29,26 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
   return (
     <DrawerContentScrollView {...props} contentContainerStyle={{ flex: 1 }}>
       <DrawerItemList {...props} />
-      <DrawerItem
-        label="Logout"
-        labelStyle={{ fontWeight: '600', marginLeft: -16 }}
-        inactiveTintColor={COLORS.textSecondary}
-        icon={({ color, size }) => (
-          <Ionicons name="log-out-outline" size={size} color={color} />
-        )}
+      <Pressable
         onPress={handleLogout}
-        style={{ marginTop: 'auto', marginBottom: 20 }}
-      />
+        style={{
+          marginTop: 'auto',
+          marginHorizontal: 16,
+          marginBottom: 28,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 12,
+          backgroundColor: 'rgba(255,107,107,0.08)',
+          borderWidth: 1,
+          borderColor: 'rgba(255,107,107,0.2)',
+          borderRadius: 12,
+          paddingVertical: 12,
+          paddingHorizontal: 16,
+        }}
+      >
+        <Ionicons name="log-out-outline" size={20} color="#ff6b6b" />
+        <Text style={{ color: '#ff6b6b', fontWeight: '700', fontSize: 14 }}>Logout</Text>
+      </Pressable>
     </DrawerContentScrollView>
   );
 }
@@ -135,6 +145,33 @@ export default function AdminLayout() {
             drawerLabel: 'View User Progress',
             title: 'User Progress',
             drawerIcon: ({ color }) => <Ionicons name="analytics-outline" size={20} color={color} />,
+          }}
+        />
+
+        <Drawer.Screen
+          name="manageUsers"
+          options={{
+            drawerLabel: 'Manage Users',
+            title: 'Manage Users',
+            drawerIcon: ({ color }) => <Ionicons name="people-outline" size={20} color={color} />,
+          }}
+        />
+
+        <Drawer.Screen
+          name="clientSkinHistory"
+          options={{
+            drawerLabel: 'Skin Analysis History',
+            title: 'Client Skin Analysis History',
+            drawerIcon: ({ color }) => <Ionicons name="pulse-outline" size={20} color={color} />,
+          }}
+        />
+
+        <Drawer.Screen
+          name="manageProducts"
+          options={{
+            drawerLabel: 'Manage Products',
+            title: 'Manage Products',
+            drawerIcon: ({ color }) => <Ionicons name="bag-outline" size={20} color={color} />,
           }}
         />
 

@@ -29,9 +29,9 @@ const SLIDES = [
 
 export default function OnboardingPage() {
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    // Web = admin portal: skip onboarding, route based on auth state
     if (Platform.OS === 'web') {
       const unsubscribe = onAuthStateChanged(auth, async (user) => {
         if (user) {
@@ -43,15 +43,17 @@ export default function OnboardingPage() {
       return unsubscribe;
     }
 
-    // Mobile = client app: skip onboarding only if already logged in
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         router.replace('/(tabs)/homePage');
+      } else {
+        setChecking(false);
       }
-      // If no user on mobile, fall through and show onboarding slides
     });
     return unsubscribe;
   }, []);
+
+  if (checking) return <View style={{ flex: 1, backgroundColor: COLORS.background }} />;
 
   const handleNext = () => {
     if (currentSlide < SLIDES.length - 1) {

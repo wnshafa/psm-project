@@ -1,11 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { addDoc, collection, onSnapshot, orderBy, query, Timestamp, where } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, Timestamp, where } from 'firebase/firestore';
+
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -16,7 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS } from '../../src/constants/theme';
 import { auth, db } from '../../src/lib/firebase';
 
-const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY ?? '';
+const CLAUDE_API_KEY = process.env.EXPO_PUBLIC_CLAUDE_API_KEY ?? '';
 
 type SkinMetric = { label: string; value: number; color: string; icon: string };
 
@@ -52,8 +54,10 @@ export default function SkinAnalysisPage() {
   const [metrics, setMetrics] = useState<SkinMetric[] | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [scannedImage, setScannedImage] = useState<string | null>(null);
+  const [pendingBase64, setPendingBase64] = useState<string | null>(null);
   const [scanDate, setScanDate] = useState<string | null>(null);
   const [history, setHistory] = useState<any[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -63,19 +67,20 @@ export default function SkinAnalysisPage() {
       (snap) => {
         const logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         setHistory(logs);
-        if (logs.length > 0) {
-          const latest = logs[0] as any;
-          setMetrics(METRIC_CONFIG.map(m => ({
-            ...m,
-            value: latest[m.label.toLowerCase()] ?? 50,
-          })));
-          setScannedImage(latest.imageUrl || null);
-          const d = latest.date?.toDate();
-          if (d) setScanDate(d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }));
-        }
       }
     );
   }, []);
+
+  const clearHistory = () => {
+    Alert.alert('Clear History', 'Delete all scan history? This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Clear All', style: 'destructive', onPress: async () => {
+          await Promise.all(history.map(log => deleteDoc(doc(db, 'skinLogs', log.id))));
+        },
+      },
+    ]);
+  };
 
   const IMAGE_OPTIONS = {
     mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -107,9 +112,9 @@ export default function SkinAnalysisPage() {
 
   const handleResult = (result: ImagePicker.ImagePickerResult) => {
     if (!result.canceled && result.assets[0].base64) {
-      const uri = result.assets[0].uri;
-      setScannedImage(uri);
-      analyzeImage(result.assets[0].base64, uri);
+      setScannedImage(result.assets[0].uri);
+      setPendingBase64(result.assets[0].base64);
+      setMetrics(null);
     }
   };
 
@@ -125,28 +130,33 @@ export default function SkinAnalysisPage() {
 }
 Return ONLY the JSON. No explanation, no markdown.`;
 
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{
-              parts: [
-                { text: prompt },
-                { inline_data: { mime_type: 'image/jpeg', data: base64Image } },
-              ],
-            }],
-            generationConfig: { temperature: 0.1 },
-          }),
-        }
-      );
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': CLAUDE_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 256,
+          temperature: 0.1,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64Image } },
+              { type: 'text', text: prompt },
+            ],
+          }],
+        }),
+      });
 
       const data = await response.json();
-      console.log('Gemini response:', JSON.stringify(data, null, 2));
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+      console.log('Claude response:', JSON.stringify(data, null, 2));
+      const text = data.content?.[0]?.text ?? '';
       const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error('No JSON in response');
+      if (!jsonMatch) throw new Error('Please upload a clear photo of your face for skin analysis.');
 
       const scores = JSON.parse(jsonMatch[0]);
 
@@ -155,6 +165,7 @@ Return ONLY the JSON. No explanation, no markdown.`;
         value: Math.min(100, Math.max(0, Math.round(scores[m.label.toLowerCase()] ?? 50))),
       }));
       setMetrics(newMetrics);
+      setPendingBase64(null);
 
       const now = new Date();
       setScanDate(now.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }));
@@ -172,7 +183,7 @@ Return ONLY the JSON. No explanation, no markdown.`;
         });
       }
     } catch (err: any) {
-      console.error('Analysis error:', err?.message ?? err);
+      console.warn('Analysis error:', err?.message ?? err);
       Alert.alert('Analysis Failed', err?.message ?? 'Could not analyse the image. Please try again.');
     } finally {
       setIsAnalyzing(false);
@@ -188,32 +199,74 @@ Return ONLY the JSON. No explanation, no markdown.`;
         {/* Header */}
         <View style={styles.headerRow}>
           <Text style={styles.headerTitle}>Skin Analysis</Text>
-          <Pressable onPress={handlePickImage} style={styles.scanBtn} disabled={isAnalyzing}>
-            <Ionicons name="camera" size={16} color="#fff" />
-            <Text style={styles.scanBtnText}>Scan</Text>
+          <Pressable onPress={() => setShowHistory(true)} style={styles.scanBtn}>
+            <Ionicons name="time-outline" size={16} color="#fff" />
+            <Text style={styles.scanBtnText}>History</Text>
           </Pressable>
         </View>
 
         {/* Loading */}
         {isAnalyzing && (
-          <View style={styles.loadingCard}>
-            <ActivityIndicator size="large" color={COLORS.primary} />
-            <Text style={styles.loadingText}>Analyzing your skin...</Text>
-          </View>
+          <>
+            {scannedImage && (
+              <View style={styles.previewCard}>
+                <Image source={{ uri: scannedImage }} style={styles.previewImage} />
+                <View style={styles.previewOverlay}>
+                  <ActivityIndicator size="small" color="#fff" />
+                  <Text style={styles.previewTitle}>Analyzing your skin...</Text>
+                </View>
+              </View>
+            )}
+          </>
         )}
 
-        {/* No scan yet */}
-        {!isAnalyzing && !metrics && (
-          <Pressable style={styles.emptyCard} onPress={handlePickImage}>
-            <View style={styles.emptyIconCircle}>
-              <Ionicons name="camera-outline" size={36} color={COLORS.primary} />
+        {/* No scan yet — no image selected */}
+        {!isAnalyzing && !metrics && !scannedImage && (
+          <>
+            <View style={styles.emptyCard}>
+              <View style={styles.emptyIconCircle}>
+                <Ionicons name="camera-outline" size={36} color={COLORS.primary} />
+              </View>
+              <Text style={styles.emptyTitle}>Scan Your Skin</Text>
+              <Text style={styles.emptySubtitle}>Take a photo or pick from gallery to get your AI skin report</Text>
             </View>
-            <Text style={styles.emptyTitle}>Scan Your Skin</Text>
-            <Text style={styles.emptySubtitle}>Take a photo or pick from gallery to get your AI skin report</Text>
-            <View style={styles.emptyBtn}>
-              <Text style={styles.emptyBtnText}>Get Started</Text>
+            <View style={styles.emptyButtons}>
+              <Pressable style={styles.emptyBtn} onPress={openCamera}>
+                <Ionicons name="camera" size={16} color="#fff" />
+                <Text style={styles.emptyBtnText}>Take Photo</Text>
+              </Pressable>
+              <Pressable style={[styles.emptyBtn, styles.emptyBtnOutline]} onPress={openLibrary}>
+                <Ionicons name="images-outline" size={16} color={COLORS.primary} />
+                <Text style={[styles.emptyBtnText, styles.emptyBtnOutlineText]}>Photo Library</Text>
+              </Pressable>
             </View>
-          </Pressable>
+          </>
+        )}
+
+        {/* Image selected — pending analysis */}
+        {!isAnalyzing && !metrics && scannedImage && pendingBase64 && (
+          <>
+            <View style={styles.previewCard}>
+              <Image source={{ uri: scannedImage }} style={styles.previewImage} />
+              <Pressable
+                style={styles.removeImageBtn}
+                onPress={() => { setScannedImage(null); setPendingBase64(null); }}
+              >
+                <Ionicons name="close" size={14} color="#fff" />
+              </Pressable>
+              <View style={styles.previewOverlay}>
+                <Text style={styles.previewTitle}>Ready to Analyze</Text>
+                <Pressable onPress={() => { setScannedImage(null); setPendingBase64(null); }} style={styles.retakeBtn}>
+                  <Ionicons name="refresh" size={13} color="rgba(255,255,255,0.8)" />
+                  <Text style={styles.retakeBtnText}>Retake</Text>
+                </Pressable>
+              </View>
+            </View>
+            <Pressable style={styles.analyzeBtn} onPress={() => analyzeImage(pendingBase64, scannedImage)}>
+              <Ionicons name="sparkles" size={18} color="#fff" />
+              <Text style={styles.analyzeBtnText}>Analyze My Skin</Text>
+            </Pressable>
+          </>
         )}
 
         {/* Result */}
@@ -279,45 +332,67 @@ Return ONLY the JSON. No explanation, no markdown.`;
               ))}
             </View>
 
-            {/* Scan History */}
-            {history.length > 1 && (
-              <View style={styles.historyCard}>
-                <Text style={styles.historyTitle}>Scan History</Text>
-                {history.slice(1, 4).map((log: any, i) => {
-                  const d = log.date?.toDate();
-                  const dateStr = d ? d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
-                  return (
-                    <View key={log.id} style={[styles.historyRow, i < Math.min(history.length - 2, 2) && styles.historyRowBorder]}>
-                      {/* Date */}
-                      <View style={styles.historyDateCol}>
-                        <Ionicons name="time-outline" size={12} color={COLORS.textSecondary} />
-                        <Text style={styles.historyDate}>{dateStr}</Text>
-                      </View>
-                      {/* Scores */}
-                      <View style={styles.historyScores}>
-                        {METRIC_CONFIG.map(m => {
-                          const val = log[m.label.toLowerCase()] ?? 0;
-                          return (
-                            <View key={m.label} style={styles.historyScore}>
-                              <Text style={[styles.historyScoreVal, { color: m.color }]}>{val}%</Text>
-                              <View style={styles.historyMiniTrack}>
-                                <View style={[styles.historyMiniFill, { flex: val / 100, backgroundColor: m.color }]} />
-                                <View style={{ flex: 1 - val / 100 }} />
-                              </View>
-                              <Text style={styles.historyScoreLabel}>{m.label.slice(0, 3).toUpperCase()}</Text>
-                            </View>
-                          );
-                        })}
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-            )}
           </>
         )}
 
       </ScrollView>
+
+      {/* History Modal */}
+      <Modal visible={showHistory} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowHistory(false)}>
+        <SafeAreaView style={styles.modalScreen}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Scan History</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {history.length > 0 && (
+                <Pressable onPress={clearHistory} style={styles.modalClearBtn}>
+                  <Ionicons name="trash-outline" size={15} color="#ff6b6b" />
+                  <Text style={styles.modalClearText}>Clear</Text>
+                </Pressable>
+              )}
+              <Pressable onPress={() => setShowHistory(false)} style={styles.modalClose}>
+                <Ionicons name="close" size={20} color={COLORS.textPrimary} />
+              </Pressable>
+            </View>
+          </View>
+          <ScrollView contentContainerStyle={styles.modalScroll}>
+            {history.length === 0 ? (
+              <View style={styles.modalEmpty}>
+                <Ionicons name="time-outline" size={40} color={COLORS.textSecondary} />
+                <Text style={styles.modalEmptyText}>No scan history yet</Text>
+              </View>
+            ) : (
+              history.map((log: any, i) => {
+                const d = log.date?.toDate();
+                const dateStr = d ? d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+                return (
+                  <View key={log.id} style={[styles.historyRow, i < history.length - 1 && styles.historyRowBorder]}>
+                    <View style={styles.historyDateCol}>
+                      <Ionicons name="time-outline" size={12} color={COLORS.textSecondary} />
+                      <Text style={styles.historyDate}>{dateStr}</Text>
+                    </View>
+                    <View style={styles.historyScores}>
+                      {METRIC_CONFIG.map(m => {
+                        const val = log[m.label.toLowerCase()] ?? 0;
+                        return (
+                          <View key={m.label} style={styles.historyScore}>
+                            <Text style={[styles.historyScoreVal, { color: m.color }]}>{val}%</Text>
+                            <View style={styles.historyMiniTrack}>
+                              <View style={[styles.historyMiniFill, { flex: val / 100, backgroundColor: m.color }]} />
+                              <View style={{ flex: 1 - val / 100 }} />
+                            </View>
+                            <Text style={styles.historyScoreLabel}>{m.label.slice(0, 3).toUpperCase()}</Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -341,18 +416,31 @@ const styles = StyleSheet.create({
   emptyIconCircle: { width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(212,165,116,0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
   emptyTitle: { fontSize: 18, fontWeight: '800', color: COLORS.textPrimary },
   emptySubtitle: { fontSize: 13, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 20 },
-  emptyBtn: { marginTop: 8, backgroundColor: COLORS.primary, paddingHorizontal: 28, paddingVertical: 12, borderRadius: 20 },
+  emptyButtons: { flexDirection: 'row', gap: 10, width: '100%' },
+  emptyBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: COLORS.primary, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 20 },
+  emptyBtnOutline: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: COLORS.primary },
   emptyBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  emptyBtnOutlineText: { color: COLORS.primary },
+  analyzeBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.primary, paddingVertical: 16, borderRadius: 20 },
+  analyzeBtnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
 
-  // Image card
+  // Image card (result view)
   imageCard: { flexDirection: 'row', backgroundColor: COLORS.card, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border, position: 'relative' },
-  removeImageBtn: { position: 'absolute', top: 8, left: 8, width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center', zIndex: 10 },
   scannedImage: { width: 110, height: 130 },
   imageMeta: { flex: 1, padding: 14, justifyContent: 'center', gap: 6 },
   imageTitle: { fontSize: 15, fontWeight: '700', color: COLORS.textPrimary },
   imageDate: { fontSize: 12, color: COLORS.textSecondary },
   rescanBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   rescanText: { fontSize: 12, color: COLORS.primary, fontWeight: '700' },
+
+  // Preview card (before analysis)
+  previewCard: { borderRadius: 20, overflow: 'hidden', position: 'relative' },
+  previewImage: { width: '100%', height: 320 },
+  removeImageBtn: { position: 'absolute', top: 12, left: 12, width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', zIndex: 10 },
+  previewOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 16, paddingVertical: 14, backgroundColor: 'rgba(0,0,0,0.35)', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  previewTitle: { fontSize: 16, fontWeight: '800', color: '#fff' },
+  retakeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  retakeBtnText: { fontSize: 13, color: 'rgba(255,255,255,0.8)', fontWeight: '600' },
 
   // Metrics 2x2 grid
   metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
@@ -374,12 +462,10 @@ const styles = StyleSheet.create({
   insightDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.primary, marginTop: 6 },
   insightText: { flex: 1, fontSize: 13, color: COLORS.textSecondary, lineHeight: 20 },
 
-  // History
-  historyCard: { backgroundColor: COLORS.card, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: COLORS.border, gap: 4 },
-  historyTitle: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 },
-  historyRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, gap: 12 },
+  // History rows (used inside modal)
+  historyRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, gap: 12, paddingHorizontal: 20 },
   historyRowBorder: { borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  historyDateCol: { flexDirection: 'row', alignItems: 'center', gap: 4, width: 80 },
+  historyDateCol: { flexDirection: 'row', alignItems: 'center', gap: 4, width: 90 },
   historyDate: { fontSize: 11, fontWeight: '600', color: COLORS.textSecondary },
   historyScores: { flex: 1, flexDirection: 'row', justifyContent: 'space-between' },
   historyScore: { alignItems: 'center', gap: 3, flex: 1 },
@@ -387,4 +473,15 @@ const styles = StyleSheet.create({
   historyMiniTrack: { width: 32, height: 4, backgroundColor: COLORS.inputBackground, borderRadius: 2, overflow: 'hidden', flexDirection: 'row' },
   historyMiniFill: { height: '100%', borderRadius: 2 },
   historyScoreLabel: { fontSize: 8, color: COLORS.textSecondary, fontWeight: '700', letterSpacing: 0.5 },
+
+  // Modal
+  modalScreen: { flex: 1, backgroundColor: COLORS.background },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: COLORS.textPrimary },
+  modalClose: { width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.inputBackground, alignItems: 'center', justifyContent: 'center' },
+  modalClearBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: 'rgba(255,107,107,0.1)' },
+  modalClearText: { fontSize: 13, fontWeight: '700', color: '#ff6b6b' },
+  modalScroll: { paddingBottom: 40 },
+  modalEmpty: { alignItems: 'center', gap: 12, paddingTop: 80 },
+  modalEmptyText: { fontSize: 14, color: COLORS.textSecondary, fontWeight: '600' },
 });

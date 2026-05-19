@@ -27,7 +27,7 @@ import {
   View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { BORDER_RADIUS, COLORS, FONT_SIZE, SPACING } from "../../src/constants/theme";
+import { COLORS, BORDER_RADIUS, FONT_SIZE, SPACING } from '../../src/constants/theme';
 import { db } from "../../src/lib/firebase";
 import { SkinPhoto, UserData, UserLog } from "../../src/types";
 

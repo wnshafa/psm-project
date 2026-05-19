@@ -10,7 +10,8 @@ import {
     query,
     Timestamp,
     updateDoc,
-    where
+    where,
+    writeBatch
 } from "firebase/firestore";
 import React, { useEffect, useState } from "react";
 import {
@@ -133,6 +134,18 @@ export default function DisplayRoutine() {
                 lastUpdated: Timestamp.now() //
             });
     
+            // Dismiss all unread reminders when routine is completed
+            const remindersSnap = await getDocs(query(
+                collection(db, 'reminder'),
+                where('clientID', '==', `/clients/${user.uid}`),
+                where('status', '==', 'unread')
+            ));
+            if (!remindersSnap.empty) {
+                const batch = writeBatch(db);
+                remindersSnap.docs.forEach(d => batch.update(d.ref, { status: 'read' }));
+                await batch.commit();
+            }
+
             Alert.alert("Success!", "Your routine is logged for today."); //
             
         } catch (error: any) {
