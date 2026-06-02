@@ -229,6 +229,7 @@ Return ONLY the JSON. No explanation, no markdown.`;
               </View>
               <Text style={styles.emptyTitle}>Scan Your Skin</Text>
               <Text style={styles.emptySubtitle}>Take a photo or pick from gallery to get your AI skin report</Text>
+              <Text style={styles.emptySubtitle}>Disclaimer: This analysis is for informational purposes only and does not replace professional dermatological advice.</Text>
             </View>
             <View style={styles.emptyButtons}>
               <Pressable style={styles.emptyBtn} onPress={openCamera}>

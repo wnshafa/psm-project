@@ -125,7 +125,7 @@ export default function Login() {
       <ScrollView contentContainerStyle={isDesktop ? styles.desktopScroll : styles.mobileScroll}>
         <View style={[styles.mainContainer, isDesktop ? styles.row : styles.column]}>
           
-          {/* LEFT SIDE: BRANDING SECTION */}
+
           <View style={[styles.brandingSection, { backgroundColor: PRESTIGE_NAVY }, isDesktop ? styles.halfWidth : styles.fullWidth]}>
             <Image
               source={require('../../assets/images/prestige_logo.png')}
@@ -135,7 +135,7 @@ export default function Login() {
             <Text style={styles.brandTagline}>Science-backed glow, daily.</Text>
           </View>
 
-          {/* RIGHT SIDE: FORM SECTION */}
+         
           <View style={[styles.formSection, isDesktop ? styles.halfWidth : styles.fullWidth]}>
             <View style={styles.card}>
               <Text style={styles.title}>Sign in</Text>

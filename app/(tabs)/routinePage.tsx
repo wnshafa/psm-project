@@ -1,15 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
-// At the top of routinePage.tsx
 import {
-    addDoc,
     collection,
     doc,
     getDocs,
-    increment,
     onSnapshot,
     query,
+    runTransaction,
     Timestamp,
-    updateDoc,
     where,
     writeBatch
 } from "firebase/firestore";
@@ -33,6 +30,19 @@ const isTimeValid = (type: string) => {
     if (type === 'Morning') return hour >= 5 && hour <= 12;
     if (type === 'Night') return hour >= 18 || hour <= 3;
     return true; 
+};
+
+const getLocalDayKey = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+const getPreviousLocalDayKey = (date: Date) => {
+    const previous = new Date(date);
+    previous.setDate(previous.getDate() - 1);
+    return getLocalDayKey(previous);
 };
 
 export default function DisplayRoutine() {
@@ -113,26 +123,65 @@ export default function DisplayRoutine() {
     
             // 3. Calculate and Store (Your existing logic with adherence)
             const totalAssigned = routines.length; //
-            const totalCompletedToday = completedRoutineIds.length + 1; 
+            const completedTodaySet = new Set(completedRoutineIds);
+            const totalCompletedToday = completedTodaySet.has(routine.id) ? completedTodaySet.size : completedTodaySet.size + 1;
             const currentAdherence = Math.round((totalCompletedToday / totalAssigned) * 100);
-    
-            await addDoc(collection(db, 'routineLogs'), {
-                clientId: user.uid, //
-                routineID: routine.id, //
-                type: routine.type, //
-                status: "completed", //
-                mood: selectedMood, //
-                notes: notes, //
-                adherenceAtLog: currentAdherence,
-                logDate: Timestamp.now(), //
+            const now = new Date();
+            const todayKey = getLocalDayKey(now);
+            const yesterdayKey = getPreviousLocalDayKey(now);
+            const logRef = doc(db, 'routineLogs', `${user.uid}_${routine.id}_${todayKey}`);
+            const clientRef = doc(db, 'clients', user.uid);
+
+            const result = await runTransaction(db, async (transaction) => {
+                const logSnap = await transaction.get(logRef);
+                if (logSnap.exists()) {
+                    return { alreadyLogged: true };
+                }
+
+                const clientSnap = await transaction.get(clientRef);
+                const freshClientData = clientSnap.exists() ? clientSnap.data() : {};
+                const currentStreak = freshClientData?.streak || 0;
+                const currentCompleted = freshClientData?.totalCompleted || 0;
+                const lastCompletedDay = freshClientData?.lastCompletedDay;
+                const nextStreak =
+                    lastCompletedDay === todayKey
+                        ? currentStreak
+                        : lastCompletedDay === yesterdayKey
+                            ? currentStreak + 1
+                            : 1;
+                const loggedAt = Timestamp.fromDate(now);
+
+                transaction.set(logRef, {
+                    clientId: user.uid, //
+                    routineID: routine.id, //
+                    type: routine.type, //
+                    status: "completed", //
+                    mood: selectedMood, //
+                    notes: notes, //
+                    adherenceAtLog: currentAdherence,
+                    logDay: todayKey,
+                    logDate: loggedAt, //
+                });
+
+                transaction.set(clientRef, {
+                    streak: nextStreak,
+                    totalCompleted: currentCompleted + 1,
+                    dailyAdherence: currentAdherence,
+                    lastCompletedDay: todayKey,
+                    lastCompletedAt: loggedAt,
+                    lastUpdated: loggedAt
+                }, { merge: true });
+
+                return { alreadyLogged: false };
             });
-    
-            // Update Client Profile
-            await updateDoc(doc(db, 'clients', user.uid), {
-                streak: increment(1), //
-                dailyAdherence: currentAdherence,
-                lastUpdated: Timestamp.now() //
-            });
+
+            if (result.alreadyLogged) {
+                Alert.alert(
+                    "Already Logged",
+                    `You have already completed your ${routine.type} routine for today!`
+                );
+                return;
+            }
     
             // Dismiss all unread reminders when routine is completed
             const remindersSnap = await getDocs(query(

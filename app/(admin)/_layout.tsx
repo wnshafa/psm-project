@@ -142,6 +142,7 @@ export default function AdminLayout() {
         <Drawer.Screen
           name="userProgress"
           options={{
+            drawerItemStyle: { display: 'none' },
             drawerLabel: 'View User Progress',
             title: 'User Progress',
             drawerIcon: ({ color }) => <Ionicons name="analytics-outline" size={20} color={color} />,
@@ -151,8 +152,8 @@ export default function AdminLayout() {
         <Drawer.Screen
           name="manageUsers"
           options={{
-            drawerLabel: 'Manage Users',
-            title: 'Manage Users',
+            drawerLabel: 'Client Management',
+            title: 'Client Management',
             drawerIcon: ({ color }) => <Ionicons name="people-outline" size={20} color={color} />,
           }}
         />
@@ -160,6 +161,7 @@ export default function AdminLayout() {
         <Drawer.Screen
           name="clientSkinHistory"
           options={{
+            drawerItemStyle: { display: 'none' },
             drawerLabel: 'Skin Analysis History',
             title: 'Client Skin Analysis History',
             drawerIcon: ({ color }) => <Ionicons name="pulse-outline" size={20} color={color} />,

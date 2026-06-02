@@ -77,7 +77,6 @@ export default function UserProfile() {
         if (snap.exists()) {
           const data = snap.data();
           setName(data.fullName || data.name || "");
-          setStreak(data.streak || 0);
         }
       });
 
@@ -90,6 +89,7 @@ export default function UserProfile() {
           setSkinConcern(d.skinConcern || "");
           setEditSkinType(d.skinType || "");
           setEditSkinConcern(d.skinConcern || "");
+          setStreak(d.streak || 0);
           setTotalCompleted(d.totalCompleted || 0);
         }
       });
@@ -335,12 +335,14 @@ export default function UserProfile() {
               <Pressable style={styles.picker} onPress={() => setTypeModalVisible(true)}>
                 <Text style={editSkinType ? styles.pickerText : styles.pickerPlaceholder}>{editSkinType || "Select Skin Type"}</Text>
                 <Ionicons name="chevron-down" size={16} color={COLORS.textSecondary} />
+                      <SelectionModal visible={typeModalVisible} data={SKIN_TYPES} selected={editSkinType} title="Select Skin Type" onSelect={setEditSkinType} onClose={() => setTypeModalVisible(false)} />
               </Pressable>
 
               <Text style={styles.inputLabel}>Skin Concern</Text>
               <Pressable style={styles.picker} onPress={() => setConcernModalVisible(true)}>
                 <Text style={editSkinConcern ? styles.pickerText : styles.pickerPlaceholder}>{editSkinConcern || "Select Concern"}</Text>
                 <Ionicons name="chevron-down" size={16} color={COLORS.textSecondary} />
+                <SelectionModal visible={concernModalVisible} data={SKIN_CONCERNS} selected={editSkinConcern} title="Select Primary Concern" onSelect={setEditSkinConcern} onClose={() => setConcernModalVisible(false)} />
               </Pressable>
 
               <Pressable style={styles.saveBtn} onPress={handleSave} disabled={saving}>
@@ -351,8 +353,6 @@ export default function UserProfile() {
         </View>
       </Modal>
 
-      <SelectionModal visible={typeModalVisible} data={SKIN_TYPES} selected={editSkinType} title="Select Skin Type" onSelect={setEditSkinType} onClose={() => setTypeModalVisible(false)} />
-      <SelectionModal visible={concernModalVisible} data={SKIN_CONCERNS} selected={editSkinConcern} title="Select Primary Concern" onSelect={setEditSkinConcern} onClose={() => setConcernModalVisible(false)} />
     </SafeAreaView>
   );
 }
