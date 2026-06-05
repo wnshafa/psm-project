@@ -144,7 +144,7 @@ export default function ManageProducts() {
         skinConcern: form.skinConcern,
       });
       closeModal();
-    } catch (e) {
+    } catch {
       Alert.alert("Error", "Failed to add product. Please try again.");
     } finally {
       setSaving(false);

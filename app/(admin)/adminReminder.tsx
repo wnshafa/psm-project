@@ -190,14 +190,15 @@ export default function AdminReminder() {
             await addDoc(collection(db, "reminder"), {
                 clientID: `/clients/${selectedClient.id}`,
                 clientName: selectedClient.name || "Client",
-                templateID: `/reminderTemplate/${selectedTemplate.id}`, // Matches your screenshot
+                templateID: `/reminderTemplate/${selectedTemplate.id}`,
                 templateTitle: selectedTemplate.title,
                 message: selectedTemplate.message,
                 userId: auth.currentUser?.uid,
                 date: Timestamp.now(),
-                status: "unread", // Client Page filters for 'unread'
+                status: "unread",
             });
 
+            // Push notification and email are handled by Cloud Function
             Alert.alert("Success", "Notification assigned to client.");
             setSelectedTemplate(null);
         } catch (error: any) {
@@ -273,7 +274,7 @@ export default function AdminReminder() {
                     {selectedTemplate && (
                         <View style={styles.previewCard}>
                             <Text style={styles.previewLabel}>Preview:</Text>
-                            <Text style={styles.previewText}>"{selectedTemplate.message}"</Text>
+                            <Text style={styles.previewText}>&quot;{selectedTemplate.message}&quot;</Text>
                         </View>
                     )}
 

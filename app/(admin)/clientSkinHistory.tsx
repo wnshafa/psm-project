@@ -159,7 +159,6 @@ export default function ClientSkinHistory() {
   // ── 2. Keep filtered list in sync with search ──
   useEffect(() => {
     applyFilter(clients, searchQuery);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery, clients]);
 
   const applyFilter = (list: ClientRow[], q: string) => {

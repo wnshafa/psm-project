@@ -11,14 +11,14 @@ import {
   TextInput,
   View,
 } from 'react-native';
-
-const CARD_WIDTH = (Dimensions.get('window').width - 40 - 10) / 2; // padding 20 each side, gap 10
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ProductCard from '../../src/components/ProductCard';
 import { COLORS } from '../../src/constants/theme';
 import { auth, db } from '../../src/lib/firebase';
 import { getAllProducts } from '../../src/services/productService';
 import { Product } from '../../src/types';
+
+const CARD_WIDTH = (Dimensions.get('window').width - 40 - 10) / 2;
 
 const CATEGORIES = ['All', 'Cleanser', 'Moisturizer', 'Serum', 'Sunscreen', 'Toner'];
 

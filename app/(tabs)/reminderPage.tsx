@@ -122,7 +122,7 @@ export default function DisplayReminders() {
                         {reminders.length === 0 ? (
                             <View style={styles.emptyContainer}>
                                 <Ionicons name="notifications-off-outline" size={48} color={COLORS.border} />
-                                <Text style={styles.cardHint}>You're all caught up!</Text>
+                                <Text style={styles.cardHint}>You&apos;re all caught up!</Text>
                             </View>
                         ) : (
                             reminders.map((reminder) => (

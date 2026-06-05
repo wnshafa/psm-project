@@ -195,7 +195,7 @@ export default function Login() {
                   disabled={loading}
                 >
                   <Text style={styles.linkText}>
-                    Don't have an account? <Text style={{ color: PRESTIGE_NAVY, fontWeight: '700' }}>Create one</Text>
+                    Don&apos;t have an account? <Text style={{ color: PRESTIGE_NAVY, fontWeight: '700' }}>Create one</Text>
                   </Text>
                 </Pressable>
               )}

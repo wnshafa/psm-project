@@ -4,13 +4,12 @@ import {
   DrawerContentScrollView,
   DrawerItemList
 } from '@react-navigation/drawer';
-import { router } from 'expo-router';
-import { Pressable, Text } from 'react-native';
 import { Drawer } from 'expo-router/drawer';
+import { router } from 'expo-router';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { COLORS } from '../../src/constants/theme';
 import { auth, db } from '../../src/lib/firebase';

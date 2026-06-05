@@ -6,7 +6,6 @@ import {
   ActivityIndicator,
   Modal,
   Pressable,
-  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -192,7 +191,7 @@ export default function ClientDashboard() {
 
         {/* ── Today's Routine ── */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Today's Routine</Text>
+          <Text style={styles.cardTitle}>Today&apos;s Routine</Text>
           <View style={styles.routineRow}>
             <Pressable
               style={[styles.routineItem, morningDone === true && styles.routineDone, morningDone === null && styles.routineNA]}

@@ -2,11 +2,49 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { Badge, Icon, Label, NativeTabs, VectorIcon } from 'expo-router/unstable-native-tabs';
 import { onAuthStateChanged } from 'firebase/auth';
-import { collection, doc, getDoc, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, onSnapshot, query, setDoc, where } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, View } from 'react-native';
 import { COLORS } from '../../src/constants/theme';
 import { auth, db } from '../../src/lib/firebase';
+
+async function registerPushToken(uid: string) {
+  if (Platform.OS === 'web') return;
+  try {
+    const Device = await import('expo-device');
+    console.log('[Push] isDevice:', Device.isDevice);
+    const Notifications = await import('expo-notifications');
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    console.log('[Push] existing permission status:', existingStatus);
+    let finalStatus = existingStatus;
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+    console.log('[Push] final permission status:', finalStatus);
+    if (finalStatus !== 'granted') {
+      console.warn('[Push] Permission not granted, skipping token registration');
+      return;
+    }
+    const token = (await Notifications.getExpoPushTokenAsync({
+      projectId: '9af900ef-ac88-4085-903e-e4ec5a424b02',
+    })).data;
+    console.log('[Push] Token registered:', token);
+    await setDoc(doc(db, 'users', uid), { pushToken: token }, { merge: true });
+    console.log('[Push] Token saved to Firestore');
+  } catch (e) {
+    console.warn('[Push] Token registration failed:', e);
+  }
+}
 
 export default function TabLayout() {
   const [isClient, setIsClient] = useState<boolean | null>(null);
@@ -27,6 +65,7 @@ export default function TabLayout() {
           const userData = userDoc.data();
           if (userData?.role === 'client' || !userData?.role) {
             setIsClient(true);
+            registerPushToken(user.uid);
             // Listen for unread reminders to show badge
             unsubReminders = onSnapshot(
               query(

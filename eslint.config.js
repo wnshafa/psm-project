@@ -7,4 +7,10 @@ module.exports = defineConfig([
   {
     ignores: ['dist/*'],
   },
+  {
+    files: ['components/ui/**'],
+    rules: {
+      'import/no-unresolved': 'off',
+    },
+  },
 ]);

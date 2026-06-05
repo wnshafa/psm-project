@@ -239,6 +239,7 @@ export default function ManageUsers() {
     filtered.forEach((user) => {
       loadClientDetails(user.id, activeTab);
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, filtered]);
 
   const handleTabChange = (tab: AdminTab) => {
@@ -304,7 +305,8 @@ export default function ManageUsers() {
     }
   };
 
-  const renderUserDetails = (user: MergedUser) => (
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _renderUserDetails = (user: MergedUser) => (
     <>
       <View style={styles.detailGrid}>
         <View style={styles.detailItem}>
@@ -356,7 +358,8 @@ export default function ManageUsers() {
     </>
   );
 
-  const renderProgressDetails = (user: MergedUser) => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _renderProgressDetails = (user: MergedUser) => {
     const logs = routineLogsMap[user.id] ?? [];
     const photos = skinPhotosMap[user.id] ?? [];
     const isLoading = loadingDetailsFor === user.id;
@@ -541,7 +544,8 @@ export default function ManageUsers() {
     );
   };
 
-  const renderSkinDetails = (user: MergedUser) => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _renderSkinDetails = (user: MergedUser) => {
     const logs = skinMetricsMap[user.id] ?? [];
     const isLoading = loadingDetailsFor === user.id;
 

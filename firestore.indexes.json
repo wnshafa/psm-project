@@ -1,0 +1,21 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "reminder",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "clientID", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "reminder",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "clientID", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
