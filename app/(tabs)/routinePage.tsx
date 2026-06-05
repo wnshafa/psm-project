@@ -25,6 +25,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { COLORS } from "../../src/constants/theme";
 import { clientPath } from "../../src/constants/firestore";
 import { auth, db } from "../../src/lib/firebase";
+import Toast from "../../src/components/Toast";
 
 const isTimeValid = (type: string) => {
     const hour = new Date().getHours();
@@ -55,6 +56,9 @@ export default function DisplayRoutine() {
     const [notes, setNotes] = useState("");
     const [activeRoutineId, setActiveRoutineId] = useState<string | null>(null);
     const [completedRoutineIds, setCompletedRoutineIds] = useState<string[]>([]);
+    const [toast, setToast] = useState({ visible: false, message: "" });
+
+    const showToast = (message: string) => setToast({ visible: true, message });
 
     useEffect(() => {
         const user = auth.currentUser;
@@ -202,7 +206,7 @@ export default function DisplayRoutine() {
                 await batch.commit();
             }
 
-            Alert.alert("Success!", "Your routine is logged for today."); //
+            showToast("Routine logged! Keep up the streak.");
             
         } catch (error: any) {
             Alert.alert("Error", error.message); //
@@ -288,12 +292,16 @@ export default function DisplayRoutine() {
                                                     />
                                                 </>
                                             )}
-                                            <Pressable 
+                                            <Pressable
                                                 style={[styles.primaryButton, (!selectedMood || isLogging || isCompleted) && styles.buttonDisabled, isCompleted && {backgroundColor: '#4ade80', opacity: 1}]}
                                                 onPress={() => handleLogCompletion(routine)}
                                                 disabled={isLogging || (!selectedMood && !isCompleted) || isCompleted}
                                             >
-                                                <Text style={styles.primaryText}>{isCompleted ? "Routine Completed" : "Unlock Glow Streak"}</Text>
+                                                {isLogging ? (
+                                                    <ActivityIndicator color={COLORS.white} size="small" />
+                                                ) : (
+                                                    <Text style={styles.primaryText}>{isCompleted ? "Routine Completed" : "Unlock Glow Streak"}</Text>
+                                                )}
                                             </Pressable>
                                         </View>
                                     )}
@@ -303,6 +311,11 @@ export default function DisplayRoutine() {
                     </View>
                 )}
             </ScrollView>
+            <Toast
+                message={toast.message}
+                visible={toast.visible}
+                onHide={() => setToast({ visible: false, message: "" })}
+            />
         </SafeAreaView>
     );
 }

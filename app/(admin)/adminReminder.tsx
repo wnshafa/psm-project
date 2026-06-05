@@ -1,5 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
 import {
   addDoc,
   collection,
@@ -12,6 +11,7 @@ import {
 } from "firebase/firestore";
 import React, { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   Modal,
@@ -22,11 +22,11 @@ import {
   TextInput,
   View
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { COLORS, BORDER_RADIUS, FONT_SIZE, SPACING } from '../../src/constants/theme';
 import { auth, db } from "../../src/lib/firebase";
 import { useClientsWithProfiles } from '../../src/hooks/useClientsWithProfiles';
 import { clientPath } from '../../src/constants/firestore';
+import Toast from '../../src/components/Toast';
 
 // --- Interfaces ---
 interface SearchableSelectProps {
@@ -38,12 +38,12 @@ interface SearchableSelectProps {
     placeholder: string;
 }
 
-interface ReminderLog { 
-    id: string; 
-    clientName: string; 
-    templateTitle: string; 
-    date: Timestamp; 
-    status: string; 
+interface ReminderLog {
+    id: string;
+    clientName: string;
+    templateTitle: string;
+    date: Timestamp;
+    status: string;
 }
 
 // --- Sub-components ---
@@ -59,8 +59,8 @@ const SearchableSelect = ({ label, data, selectedItem, onSelect, displayKey, pla
     return (
         <View style={styles.selectContainer}>
             <Text style={styles.selectLabel}>{label}</Text>
-            <Pressable 
-                style={styles.selectButton} 
+            <Pressable
+                style={styles.selectButton}
                 onPress={() => { setSearchText(""); setModalVisible(true); }}
             >
                 <Text style={[styles.selectButtonText, !selectedItem && { color: COLORS.textSecondary }]}>
@@ -80,22 +80,22 @@ const SearchableSelect = ({ label, data, selectedItem, onSelect, displayKey, pla
                         </View>
                         <View style={styles.searchContainer}>
                             <Ionicons name="search" size={20} color={COLORS.textSecondary} style={{ marginRight: 8 }} />
-                            <TextInput 
-                                style={styles.searchInput} 
-                                placeholder="Search..." 
-                                placeholderTextColor={COLORS.textSecondary} 
-                                value={searchText} 
-                                onChangeText={setSearchText} 
-                                autoFocus 
+                            <TextInput
+                                style={styles.searchInput}
+                                placeholder="Search..."
+                                placeholderTextColor={COLORS.textSecondary}
+                                value={searchText}
+                                onChangeText={setSearchText}
+                                autoFocus
                             />
                         </View>
-                        <FlatList 
-                            data={filteredData} 
-                            keyExtractor={(item) => item.id} 
-                            contentContainerStyle={styles.listContent} 
+                        <FlatList
+                            data={filteredData}
+                            keyExtractor={(item) => item.id}
+                            contentContainerStyle={styles.listContent}
                             renderItem={({ item }) => (
-                                <Pressable 
-                                    style={[styles.optionItem, selectedItem?.id === item.id && styles.optionSelected]} 
+                                <Pressable
+                                    style={[styles.optionItem, selectedItem?.id === item.id && styles.optionSelected]}
                                     onPress={() => { onSelect(item); setModalVisible(false); }}
                                 >
                                     <Text style={[styles.optionText, selectedItem?.id === item.id && styles.optionTextSelected]}>
@@ -103,8 +103,8 @@ const SearchableSelect = ({ label, data, selectedItem, onSelect, displayKey, pla
                                     </Text>
                                     {selectedItem?.id === item.id && <Ionicons name="checkmark" size={20} color={COLORS.primary} />}
                                 </Pressable>
-                            )} 
-                            ListEmptyComponent={<Text style={styles.emptyText}>No results found.</Text>} 
+                            )}
+                            ListEmptyComponent={<Text style={styles.emptyText}>No results found.</Text>}
                         />
                     </View>
                 </View>
@@ -123,22 +123,28 @@ export default function AdminReminder() {
     const [createTemplateVisible, setCreateTemplateVisible] = useState(false);
     const [newTemplateTitle, setNewTemplateTitle] = useState("");
     const [newTemplateMessage, setNewTemplateMessage] = useState("");
+    const [sendMode, setSendMode] = useState<'template' | 'custom'>('template');
+    const [customTitle, setCustomTitle] = useState("");
+    const [customMessage, setCustomMessage] = useState("");
+    const [sendingReminder, setSendingReminder] = useState(false);
+    const [savingTemplate, setSavingTemplate] = useState(false);
+    const [toast, setToast] = useState({ visible: false, message: "" });
+
+    const showToast = (message: string) => setToast({ visible: true, message });
 
     // 1. Fetch Templates
     useEffect(() => {
       const unsub = onSnapshot(collection(db, "reminderTemplate"), (snapshot) => {
           setTemplates(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       }, (error) => {
-          // This will now print a readable message in your console if permissions are denied
           console.error("Template Listener Error:", error.message);
       });
       return () => unsub();
   }, []);
 
-    // 2. Fetch History (Requires Composite Index in Firestore)
+    // 2. Fetch History
     useEffect(() => {
-        // Query must match 'clientID' string and 'date' field
-        let q = selectedClient 
+        let q = selectedClient
             ? query(collection(db, "reminder"), where("clientID", "==", clientPath(selectedClient.id)), orderBy("date", "desc"), limit(15))
             : query(collection(db, "reminder"), orderBy("date", "desc"), limit(10));
 
@@ -151,28 +157,43 @@ export default function AdminReminder() {
 
     // 3. Send Reminder Logic
     const handleCreateReminder = async () => {
-        if (!selectedClient || !selectedTemplate) {
-            Alert.alert("Error", "Please select a client and a template.");
+        if (!selectedClient) {
+            Alert.alert("Error", "Please select a client.");
+            return;
+        }
+        if (sendMode === 'template' && !selectedTemplate) {
+            Alert.alert("Error", "Please select a template.");
+            return;
+        }
+        if (sendMode === 'custom' && (!customTitle.trim() || !customMessage.trim())) {
+            Alert.alert("Error", "Please fill in both title and message.");
             return;
         }
 
+        const title = sendMode === 'custom' ? customTitle.trim() : selectedTemplate.title;
+        const message = sendMode === 'custom' ? customMessage.trim() : selectedTemplate.message;
+
+        setSendingReminder(true);
         try {
             await addDoc(collection(db, "reminder"), {
                 clientID: clientPath(selectedClient.id),
                 clientName: selectedClient.name || "Client",
-                templateID: `/reminderTemplate/${selectedTemplate.id}`,
-                templateTitle: selectedTemplate.title,
-                message: selectedTemplate.message,
+                ...(sendMode === 'template' && { templateID: `/reminderTemplate/${selectedTemplate.id}` }),
+                templateTitle: title,
+                message,
                 userId: auth.currentUser?.uid,
                 date: Timestamp.now(),
                 status: "unread",
             });
 
-            // Push notification and email are handled by Cloud Function
-            Alert.alert("Success", "Notification assigned to client.");
+            showToast("Notification sent to client.");
             setSelectedTemplate(null);
+            setCustomTitle("");
+            setCustomMessage("");
         } catch (error: any) {
             Alert.alert("Error", error.message);
+        } finally {
+            setSendingReminder(false);
         }
     };
 
@@ -181,76 +202,130 @@ export default function AdminReminder() {
         if (!newTemplateTitle.trim() || !newTemplateMessage.trim()) {
             return Alert.alert("Error", "Fill in all fields.");
         }
+        setSavingTemplate(true);
         try {
-            await addDoc(collection(db, "reminderTemplate"), { 
-                title: newTemplateTitle.trim(), 
-                message: newTemplateMessage.trim(), 
-                userId: auth.currentUser?.uid, 
-                createdAt: Timestamp.now() 
+            await addDoc(collection(db, "reminderTemplate"), {
+                title: newTemplateTitle.trim(),
+                message: newTemplateMessage.trim(),
+                userId: auth.currentUser?.uid,
+                createdAt: Timestamp.now()
             });
-            Alert.alert("Success", "Template saved.");
-            setNewTemplateTitle(""); 
-            setNewTemplateMessage(""); 
+            showToast("Template saved.");
+            setNewTemplateTitle("");
+            setNewTemplateMessage("");
             setCreateTemplateVisible(false);
-        } catch (error: any) { 
-            Alert.alert("Error", error.message); 
+        } catch (error: any) {
+            Alert.alert("Error", error.message);
+        } finally {
+            setSavingTemplate(false);
         }
     };
 
     return (
-        <SafeAreaView style={styles.screen}>
+        <View style={styles.screen}>
             <ScrollView contentContainerStyle={styles.scroll}>
-                <View style={styles.headerRow}>
-                    <Pressable onPress={() => router.back()} style={styles.backBtn}>
-                        <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
-                        <Text style={styles.backButtonText}> Back</Text>
-                    </Pressable>
-                    <Text style={styles.headerTitle}>Reminders</Text>
-                    <View style={{ width: 40 }} />
+                <View style={styles.pageHeader}>
+                    <Text style={styles.pageTitle}>Reminders</Text>
+                    <Text style={styles.pageSubtitle}>Send notifications to clients</Text>
                 </View>
 
                 <View style={styles.card}>
                     <Text style={styles.sectionTitle}>Send New Notification</Text>
-                    
-                    <SearchableSelect 
-                        label="Target Client" 
-                        data={clients} 
-                        selectedItem={selectedClient} 
-                        onSelect={setSelectedClient} 
-                        displayKey="name" 
-                        placeholder="Select Client..." 
+
+                    <SearchableSelect
+                        label="Target Client"
+                        data={clients}
+                        selectedItem={selectedClient}
+                        onSelect={setSelectedClient}
+                        displayKey="name"
+                        placeholder="Select Client..."
                     />
-                    
+
                     {selectedClient && (
                         <Pressable onPress={() => setSelectedClient(null)} style={{marginTop: 5}}>
                             <Text style={{color: COLORS.primary, fontSize: 12}}>Clear filter / Show all history</Text>
                         </Pressable>
                     )}
 
-                    <View style={{ marginTop: SPACING.lg }}>
-                        <SearchableSelect 
-                            label="Message Template" 
-                            data={templates} 
-                            selectedItem={selectedTemplate} 
-                            onSelect={setSelectedTemplate} 
-                            displayKey="title" 
-                            placeholder="Select Template..." 
-                        />
-                        <Pressable onPress={() => setCreateTemplateVisible(true)} style={styles.addTemplateLink}>
-                            <Text style={styles.addTemplateText}>+ Create New Template</Text>
+                    {/* Mode toggle */}
+                    <View style={styles.modeToggle}>
+                        <Pressable
+                            style={[styles.modeTab, sendMode === 'template' && styles.modeTabActive]}
+                            onPress={() => setSendMode('template')}
+                        >
+                            <Text style={[styles.modeTabText, sendMode === 'template' && styles.modeTabTextActive]}>
+                                From Template
+                            </Text>
+                        </Pressable>
+                        <Pressable
+                            style={[styles.modeTab, sendMode === 'custom' && styles.modeTabActive]}
+                            onPress={() => setSendMode('custom')}
+                        >
+                            <Text style={[styles.modeTabText, sendMode === 'custom' && styles.modeTabTextActive]}>
+                                Custom Message
+                            </Text>
                         </Pressable>
                     </View>
 
-                    {selectedTemplate && (
-                        <View style={styles.previewCard}>
-                            <Text style={styles.previewLabel}>Preview:</Text>
-                            <Text style={styles.previewText}>&quot;{selectedTemplate.message}&quot;</Text>
+                    {sendMode === 'template' ? (
+                        <View style={{ marginTop: SPACING.md }}>
+                            <SearchableSelect
+                                label="Message Template"
+                                data={templates}
+                                selectedItem={selectedTemplate}
+                                onSelect={setSelectedTemplate}
+                                displayKey="title"
+                                placeholder="Select Template..."
+                            />
+                            <Pressable onPress={() => setCreateTemplateVisible(true)} style={styles.addTemplateLink}>
+                                <Text style={styles.addTemplateText}>+ Create New Template</Text>
+                            </Pressable>
+                            {selectedTemplate && (
+                                <View style={styles.previewCard}>
+                                    <Text style={styles.previewLabel}>Preview:</Text>
+                                    <Text style={styles.previewText}>&quot;{selectedTemplate.message}&quot;</Text>
+                                </View>
+                            )}
+                        </View>
+                    ) : (
+                        <View style={{ marginTop: SPACING.md, gap: SPACING.sm }}>
+                            <View style={styles.inputGroup}>
+                                <Text style={styles.inputLabel}>Title</Text>
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="Notification title..."
+                                    placeholderTextColor={COLORS.textSecondary}
+                                    value={customTitle}
+                                    onChangeText={setCustomTitle}
+                                />
+                            </View>
+                            <View style={styles.inputGroup}>
+                                <Text style={styles.inputLabel}>Message</Text>
+                                <TextInput
+                                    style={[styles.input, styles.textArea]}
+                                    multiline
+                                    placeholder="Write your message here..."
+                                    placeholderTextColor={COLORS.textSecondary}
+                                    value={customMessage}
+                                    onChangeText={setCustomMessage}
+                                />
+                            </View>
                         </View>
                     )}
 
-                    <Pressable style={styles.createButton} onPress={handleCreateReminder}>
-                        <Ionicons name="send" size={18} color="#fff" style={{marginRight: 8}} />
-                        <Text style={styles.createButtonText}>Send Notification</Text>
+                    <Pressable
+                        style={[styles.createButton, sendingReminder && { opacity: 0.7 }]}
+                        onPress={handleCreateReminder}
+                        disabled={sendingReminder}
+                    >
+                        {sendingReminder ? (
+                            <ActivityIndicator color="#fff" size="small" />
+                        ) : (
+                            <>
+                                <Ionicons name="send" size={18} color="#fff" style={{marginRight: 8}} />
+                                <Text style={styles.createButtonText}>Send Notification</Text>
+                            </>
+                        )}
                     </Pressable>
                 </View>
 
@@ -290,39 +365,52 @@ export default function AdminReminder() {
                                 <Ionicons name="close" size={24} color={COLORS.textPrimary} />
                             </Pressable>
                         </View>
-                        <TextInput 
-                            style={styles.input} 
-                            placeholder="Title" 
-                            value={newTemplateTitle} 
-                            onChangeText={setNewTemplateTitle} 
-                            placeholderTextColor={COLORS.textSecondary} 
+                        <TextInput
+                            style={[styles.input, { marginBottom: SPACING.md }]}
+                            placeholder="Title"
+                            value={newTemplateTitle}
+                            onChangeText={setNewTemplateTitle}
+                            placeholderTextColor={COLORS.textSecondary}
                         />
-                        <TextInput 
-                            style={[styles.input, styles.textArea]} 
-                            multiline 
-                            placeholder="Message" 
-                            value={newTemplateMessage} 
-                            onChangeText={setNewTemplateMessage} 
-                            placeholderTextColor={COLORS.textSecondary} 
+                        <TextInput
+                            style={[styles.input, styles.textArea, { marginBottom: SPACING.md }]}
+                            multiline
+                            placeholder="Message"
+                            value={newTemplateMessage}
+                            onChangeText={setNewTemplateMessage}
+                            placeholderTextColor={COLORS.textSecondary}
                         />
-                        <Pressable style={styles.createButton} onPress={handleCreateTemplate}>
-                            <Text style={styles.createButtonText}>Save Template</Text>
+                        <Pressable
+                            style={[styles.createButton, savingTemplate && { opacity: 0.7 }]}
+                            onPress={handleCreateTemplate}
+                            disabled={savingTemplate}
+                        >
+                            {savingTemplate ? (
+                                <ActivityIndicator color="#fff" size="small" />
+                            ) : (
+                                <Text style={styles.createButtonText}>Save Template</Text>
+                            )}
                         </Pressable>
                     </View>
                 </View>
             </Modal>
-        </SafeAreaView>
+
+            <Toast
+                message={toast.message}
+                visible={toast.visible}
+                onHide={() => setToast({ visible: false, message: "" })}
+            />
+        </View>
     );
 }
 
 // --- Styles ---
 const styles = StyleSheet.create({
     screen: { flex: 1, backgroundColor: COLORS.background },
-    scroll: { padding: SPACING.lg, paddingBottom: 40 },
-    headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: SPACING.xl },
-    backBtn: { flexDirection: 'row', alignItems: 'center' },
-    backButtonText: { color: COLORS.textPrimary, fontSize: FONT_SIZE.md, fontWeight: "600" },
-    headerTitle: { color: COLORS.textPrimary, fontSize: FONT_SIZE.lg, fontWeight: "700" },
+    scroll: { padding: 24 },
+    pageHeader: { marginBottom: SPACING.xl },
+    pageTitle: { fontSize: 28, fontWeight: '800', color: COLORS.textPrimary },
+    pageSubtitle: { fontSize: 13, color: COLORS.textSecondary, marginTop: 2, fontWeight: '500' },
     card: { backgroundColor: COLORS.card, padding: SPACING.lg, borderRadius: BORDER_RADIUS.lg, borderWidth: 1, borderColor: COLORS.border },
     sectionTitle: { fontSize: FONT_SIZE.md, fontWeight: '700', color: COLORS.textPrimary, marginBottom: SPACING.md },
     selectContainer: { gap: SPACING.sm },
@@ -354,6 +442,13 @@ const styles = StyleSheet.create({
     optionText: { color: COLORS.textPrimary, fontSize: FONT_SIZE.md },
     optionTextSelected: { color: COLORS.primary, fontWeight: "bold" },
     emptyText: { color: COLORS.textSecondary, textAlign: "center", marginTop: SPACING.xl },
-    input: { borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md, borderRadius: BORDER_RADIUS.md, backgroundColor: COLORS.inputBackground, color: COLORS.textPrimary, marginBottom: SPACING.md },
+    input: { borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md, borderRadius: BORDER_RADIUS.md, backgroundColor: COLORS.inputBackground, color: COLORS.textPrimary },
     textArea: { height: 100, textAlignVertical: 'top' },
+    inputGroup: { gap: 4 },
+    inputLabel: { color: COLORS.textSecondary, fontSize: FONT_SIZE.sm, fontWeight: '600' },
+    modeToggle: { flexDirection: 'row', backgroundColor: COLORS.inputBackground, borderRadius: BORDER_RADIUS.md, borderWidth: 1, borderColor: COLORS.border, marginTop: SPACING.lg, padding: 3, gap: 3 },
+    modeTab: { flex: 1, paddingVertical: SPACING.sm, borderRadius: BORDER_RADIUS.sm - 1, alignItems: 'center' },
+    modeTabActive: { backgroundColor: COLORS.card, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
+    modeTabText: { fontSize: FONT_SIZE.sm, fontWeight: '600', color: COLORS.textSecondary },
+    modeTabTextActive: { color: COLORS.primary },
 });

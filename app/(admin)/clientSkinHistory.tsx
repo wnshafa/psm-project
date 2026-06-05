@@ -17,7 +17,6 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { COLORS, BORDER_RADIUS, FONT_SIZE, SPACING } from '../../src/constants/theme';
 import { useClientsWithProfiles } from '../../src/hooks/useClientsWithProfiles';
 import { db } from "../../src/lib/firebase";
@@ -170,17 +169,14 @@ export default function ClientSkinHistory() {
   // ─── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
 
         {/* Page header */}
         <View style={styles.pageHeader}>
-          <Ionicons name="pulse-outline" size={24} color={COLORS.primary} />
           <Text style={styles.pageTitle}>Skin Analysis History</Text>
+          <Text style={styles.pageSubtitle}>Tap a client to view their logged skin metrics over time.</Text>
         </View>
-        <Text style={styles.pageSubtitle}>
-          Tap a client to view their logged skin metrics over time.
-        </Text>
 
         {/* Search */}
         <View style={styles.searchContainer}>
@@ -317,7 +313,7 @@ export default function ClientSkinHistory() {
           </View>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -325,23 +321,22 @@ export default function ClientSkinHistory() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.background },
-  scroll: { padding: SPACING.lg, paddingBottom: 40 },
+  scroll: { padding: 24 },
 
   // Page header
   pageHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.sm,
-    marginBottom: SPACING.xs,
+    marginBottom: SPACING.lg,
   },
   pageTitle: {
-    fontSize: FONT_SIZE.xl,
-    fontWeight: "700",
+    fontSize: 28,
+    fontWeight: "800",
     color: COLORS.textPrimary,
   },
   pageSubtitle: {
-    fontSize: FONT_SIZE.sm,
+    fontSize: 13,
     color: COLORS.textSecondary,
+    marginTop: 2,
+    fontWeight: '500',
     marginBottom: SPACING.lg,
     lineHeight: 20,
   },

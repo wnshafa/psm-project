@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { collection, onSnapshot, orderBy, query, Timestamp, where } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+
 import { COLORS } from '../../src/constants/theme';
 import { db } from '../../src/lib/firebase';
 
@@ -88,7 +88,7 @@ export default function AdminHomePage() {
   }
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
         {/* Header */}
@@ -282,13 +282,13 @@ export default function AdminHomePage() {
         )}
 
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.background },
-  scroll: { padding: 18, gap: 10, paddingBottom: 30 },
+  scroll: { padding: 24, gap: 16 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
@@ -303,7 +303,7 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 21, fontWeight: '800', color: COLORS.textPrimary },
   statLabel: { fontSize: 9, color: COLORS.textSecondary, fontWeight: '700', textTransform: 'uppercase', textAlign: 'center' },
 
-  sectionTitle: { fontSize: 12, fontWeight: '800', color: COLORS.textPrimary, textTransform: 'uppercase', letterSpacing: 0, marginTop: 1 },
+  sectionTitle: { fontSize: 12, fontWeight: '800', color: COLORS.textPrimary, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 8 },
 
   actionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   actionBtn: { flex: 1, minWidth: 72, minHeight: 78, backgroundColor: COLORS.card, borderRadius: 12, padding: 9, alignItems: 'center', justifyContent: 'center', gap: 5, borderWidth: 1, borderColor: COLORS.border },

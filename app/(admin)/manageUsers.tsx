@@ -24,7 +24,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+
 import { BORDER_RADIUS, COLORS, FONT_SIZE, SPACING } from '../../src/constants/theme';
 import { useClientsWithProfiles } from '../../src/hooks/useClientsWithProfiles';
 import { SKIN_METRICS } from '../../src/constants/metrics';
@@ -529,7 +529,7 @@ export default function ManageUsers() {
   }
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={styles.pageHeader}>
           <View>
@@ -984,15 +984,15 @@ export default function ManageUsers() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.background },
-  scroll: { padding: 20, paddingBottom: 40, gap: 14 },
+  scroll: { padding: 24, gap: 14 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background },
-  pageHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  pageHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
   pageTitle: { fontSize: 28, fontWeight: '800', color: COLORS.textPrimary },
   pageSubtitle: { fontSize: 13, color: COLORS.textSecondary, marginTop: 2, fontWeight: '500' },
   tabRow: { flexDirection: 'row', backgroundColor: COLORS.card, borderRadius: BORDER_RADIUS.md, borderWidth: 1, borderColor: COLORS.border, padding: 4, gap: 4 },

@@ -1,86 +1,73 @@
 import { Ionicons } from '@expo/vector-icons';
-import {
-  DrawerContentComponentProps,
-  DrawerContentScrollView,
-  DrawerItemList
-} from '@react-navigation/drawer';
-import { Drawer } from 'expo-router/drawer';
-import { router } from 'expo-router';
+import { Slot, router, usePathname } from 'expo-router';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { COLORS } from '../../src/constants/theme';
+import {
+  ActivityIndicator,
+  Animated,
+  Platform,
+  Pressable,
+  Text,
+  View,
+  StyleSheet,
+} from 'react-native';
+import { COLORS, FONT_SIZE, SPACING, BORDER_RADIUS } from '../../src/constants/theme';
 import { auth, db } from '../../src/lib/firebase';
 
-function CustomDrawerContent(props: DrawerContentComponentProps) {
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      // Root layout will handle redirect, but safe to call here too
-      router.replace('/(auth)/login'); 
-    } catch (error) {
-      console.error('Logout failed:', error);
-    }
-  };
+const SIDEBAR_FULL = 240;
+const SIDEBAR_COLLAPSED = 64;
 
-  return (
-    <DrawerContentScrollView {...props} contentContainerStyle={{ flex: 1 }}>
-      <DrawerItemList {...props} />
-      <Pressable
-        onPress={handleLogout}
-        style={{
-          marginTop: 'auto',
-          marginHorizontal: 16,
-          marginBottom: 28,
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 12,
-          backgroundColor: 'rgba(255,107,107,0.08)',
-          borderWidth: 1,
-          borderColor: 'rgba(255,107,107,0.2)',
-          borderRadius: 12,
-          paddingVertical: 12,
-          paddingHorizontal: 16,
-        }}
-      >
-        <Ionicons name="log-out-outline" size={20} color="#ff6b6b" />
-        <Text style={{ color: '#ff6b6b', fontWeight: '700', fontSize: 14 }}>Logout</Text>
-      </Pressable>
-    </DrawerContentScrollView>
-  );
-}
+const NAV_ITEMS = [
+  { route: '/(admin)/homePage', path: '/homePage', label: 'Monitor Adherence', icon: 'stats-chart-outline' },
+  { route: '/(admin)/assignRoutine', path: '/assignRoutine', label: 'Assign Routines', icon: 'flask-outline' },
+  { route: '/(admin)/adminReminder', path: '/adminReminder', label: 'Send Reminders', icon: 'notifications-outline' },
+  { route: '/(admin)/manageUsers', path: '/manageUsers', label: 'Client Management', icon: 'people-outline' },
+  { route: '/(admin)/manageProducts', path: '/manageProducts', label: 'Manage Products', icon: 'bag-outline' },
+] as const;
 
 export default function AdminLayout() {
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const [adminProfile, setAdminProfile] = useState<{ fullName: string; email: string } | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
+  const pathname = usePathname();
+  const sidebarWidth = useState(new Animated.Value(SIDEBAR_FULL))[0];
+
+  const toggleSidebar = () => {
+    const toValue = collapsed ? SIDEBAR_FULL : SIDEBAR_COLLAPSED;
+    Animated.timing(sidebarWidth, {
+      toValue,
+      duration: 220,
+      useNativeDriver: false,
+    }).start();
+    setCollapsed(!collapsed);
+  };
 
   useEffect(() => {
-    // Guard: admin portal is web-only
     if (Platform.OS !== 'web') {
       router.replace('/(tabs)/homePage');
       return;
     }
 
-    // 1. Listen for Auth State
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
-          // 2. Check Firestore for admin role
           const userDoc = await getDoc(doc(db, 'users', user.uid));
           if (userDoc.exists() && userDoc.data().role === 'admin') {
+            const data = userDoc.data();
+            setAdminProfile({
+              fullName: data.fullName || 'Admin',
+              email: user.email || '',
+            });
             setIsAdmin(true);
           } else {
-            // Not an admin on web? Send back to login
             setIsAdmin(false);
             router.replace('/(auth)/login');
           }
-        } catch (error) {
-          console.error("Role check failed:", error);
+        } catch {
           router.replace('/(auth)/login');
         }
       } else {
-        // Not logged in at all
         router.replace('/(auth)/login');
       }
     });
@@ -88,89 +75,242 @@ export default function AdminLayout() {
     return () => unsubscribe();
   }, []);
 
-  // 3. Show loading spinner while checking role
   if (isAdmin === null) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}>
+      <View style={styles.loading}>
         <ActivityIndicator size="large" color={COLORS.primary} />
       </View>
     );
   }
 
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      router.replace('/(auth)/login');
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
+
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <Drawer
-        drawerContent={(props) => <CustomDrawerContent {...props} />}
-        screenOptions={{
-          headerStyle: { backgroundColor: COLORS.background },
-          headerTintColor: COLORS.textPrimary,
-          drawerStyle: { backgroundColor: COLORS.background, width: 260 },
-          drawerActiveTintColor: COLORS.textPrimary,
-          drawerActiveBackgroundColor: COLORS.card,
-          drawerInactiveTintColor: COLORS.textSecondary,
-          drawerLabelStyle: { fontWeight: '600' },
-        }}
-      >
-        <Drawer.Screen
-          name="homePage"
-          options={{
-            drawerLabel: 'Monitor Adherence',
-            title: 'Admin Dashboard',
-            drawerIcon: ({ color }) => <Ionicons name="stats-chart-outline" size={20} color={color} />,
-          }}
-        />
+    <View style={styles.root}>
+      {/* Sidebar */}
+      <Animated.View style={[styles.sidebar, { width: sidebarWidth }]}>
+        {/* Logo + Toggle */}
+        <View style={[styles.sidebarHeader, collapsed && styles.sidebarHeaderCollapsed]}>
+          {!collapsed && (
+            <Text style={styles.logoText}>PrestigeMY</Text>
+          )}
+          <Pressable onPress={toggleSidebar} style={styles.toggleBtn}>
+            <Ionicons name="menu" size={22} color={COLORS.white} />
+          </Pressable>
+        </View>
 
-        <Drawer.Screen
-          name="assignRoutine"
-          options={{
-            drawerLabel: 'Assign Routines',
-            title: 'Assign Skincare Routine',
-            drawerIcon: ({ color }) => <Ionicons name="flask-outline" size={20} color={color} />,
-          }}
-        />
+        {/* Nav Items */}
+        <View style={styles.navList}>
+          {NAV_ITEMS.map((item) => {
+            const isActive = pathname === item.path || pathname.startsWith(item.path);
+            return (
+              <Pressable
+                key={item.route}
+                style={[styles.navItem, collapsed && styles.navItemCollapsed, isActive && styles.navItemActive]}
+                onPress={() => router.push(item.route as any)}
+              >
+                <Ionicons
+                  name={item.icon as any}
+                  size={20}
+                  color={isActive ? COLORS.white : 'rgba(255,255,255,0.65)'}
+                />
+                {!collapsed && (
+                  <Text style={[styles.navLabel, isActive && styles.navLabelActive]}>
+                    {item.label}
+                  </Text>
+                )}
+              </Pressable>
+            );
+          })}
+        </View>
 
-        <Drawer.Screen
-          name="adminReminder"
-          options={{
-            drawerLabel: 'Send Reminders',
-            title: 'Send Administrative Reminder',
-            drawerIcon: ({ color }) => <Ionicons name="notifications-outline" size={20} color={color} />,
-          }}
-        />
+        {/* Profile + Logout */}
+        <View style={[styles.profileSection, collapsed && styles.profileSectionCollapsed]}>
+          {adminProfile && (
+            <View style={[styles.profileRow, collapsed && styles.profileRowCollapsed]}>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>
+                  {adminProfile.fullName.charAt(0).toUpperCase()}
+                </Text>
+              </View>
+              {!collapsed && (
+                <View style={styles.profileInfo}>
+                  <Text style={styles.profileName} numberOfLines={1}>{adminProfile.fullName}</Text>
+                  <Text style={styles.profileEmail} numberOfLines={1}>{adminProfile.email}</Text>
+                </View>
+              )}
+            </View>
+          )}
+          <Pressable style={[styles.logoutBtn, collapsed && styles.logoutBtnCollapsed]} onPress={handleLogout}>
+            <Ionicons name="log-out-outline" size={20} color="#ff6b6b" />
+            {!collapsed && (
+              <Text style={styles.logoutText}>Logout</Text>
+            )}
+          </Pressable>
+        </View>
+      </Animated.View>
 
-        <Drawer.Screen
-          name="manageUsers"
-          options={{
-            drawerLabel: 'Client Management',
-            title: 'Client Management',
-            drawerIcon: ({ color }) => <Ionicons name="people-outline" size={20} color={color} />,
-          }}
-        />
-
-        <Drawer.Screen
-          name="clientSkinHistory"
-          options={{
-            drawerItemStyle: { display: 'none' },
-            drawerLabel: 'Skin Analysis History',
-            title: 'Client Skin Analysis History',
-            drawerIcon: ({ color }) => <Ionicons name="pulse-outline" size={20} color={color} />,
-          }}
-        />
-
-        <Drawer.Screen
-          name="manageProducts"
-          options={{
-            drawerLabel: 'Manage Products',
-            title: 'Manage Products',
-            drawerIcon: ({ color }) => <Ionicons name="bag-outline" size={20} color={color} />,
-          }}
-        />
-
-        <Drawer.Screen
-          name="logout"
-          options={{ drawerItemStyle: { display: 'none' } }}
-        />
-      </Drawer>
-    </GestureHandlerRootView>
+      {/* Main content */}
+      <View style={styles.content}>
+        <Slot />
+      </View>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    flexDirection: 'row',
+    backgroundColor: COLORS.background,
+  },
+  loading: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.background,
+  },
+  sidebar: {
+    backgroundColor: COLORS.primary,
+    padding: SPACING.lg,
+    overflow: 'hidden',
+    flexDirection: 'column',
+  },
+  sidebarHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.xl,
+    minHeight: 36,
+  },
+  sidebarHeaderCollapsed: {
+    justifyContent: 'center',
+  },
+  logoText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZE.md,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    flex: 1,
+  },
+  toggleBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: BORDER_RADIUS.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  profileSection: {
+    gap: SPACING.sm,
+    paddingTop: SPACING.lg,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.1)',
+  },
+  profileSectionCollapsed: {
+    alignItems: 'center',
+  },
+  profileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  profileRowCollapsed: {
+    justifyContent: 'center',
+  },
+  avatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  avatarText: {
+    color: COLORS.white,
+    fontWeight: '800',
+    fontSize: FONT_SIZE.md,
+  },
+  profileInfo: {
+    flex: 1,
+    overflow: 'hidden',
+  },
+  profileName: {
+    color: COLORS.white,
+    fontWeight: '700',
+    fontSize: FONT_SIZE.sm,
+  },
+  profileEmail: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 11,
+    marginTop: 1,
+  },
+  navList: {
+    flex: 1,
+    gap: SPACING.sm,
+  },
+  navItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+  },
+  navItemCollapsed: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 0,
+    width: 44,
+    height: 44,
+    alignSelf: 'center',
+  },
+  navItemActive: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  navLabel: {
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: FONT_SIZE.sm,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  navLabelActive: {
+    color: COLORS.white,
+  },
+  logoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: 'rgba(255,107,107,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,107,107,0.2)',
+  },
+  logoutBtnCollapsed: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 0,
+    width: 44,
+    height: 44,
+    alignSelf: 'center',
+  },
+  logoutText: {
+    color: '#ff6b6b',
+    fontWeight: '700',
+    fontSize: FONT_SIZE.sm,
+  },
+  content: {
+    flex: 1,
+    overflow: 'hidden',
+  },
+});
