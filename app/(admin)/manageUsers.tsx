@@ -67,6 +67,16 @@ const METRIC_CONFIG = [
 
 const getClientName = (user: MergedUser) => user.fullName ?? user.name ?? 'Unnamed Client';
 
+const formatPhone = (phone?: string | null) => {
+  if (!phone) return '—';
+  const cleaned = phone.replace(/[-\s]/g, '');
+  // 011-XXXXXXXX (8 digits after prefix)
+  if (/^(011)\d{8}$/.test(cleaned)) return `${cleaned.slice(0, 3)}-${cleaned.slice(3)}`;
+  // 01X-XXXXXXX (7 digits after prefix)
+  if (/^(01\d)\d{7}$/.test(cleaned)) return `${cleaned.slice(0, 3)}-${cleaned.slice(3)}`;
+  return phone;
+};
+
 const formatDate = (ts?: Timestamp | null, includeTime = false) => {
   if (!ts || typeof ts.toDate !== 'function') return 'N/A';
   return ts.toDate().toLocaleDateString(undefined, {
@@ -99,8 +109,6 @@ export default function ManageUsers() {
   const [activeTab, setActiveTab] = useState<AdminTab>(
     params.tab === 'progress' || params.tab === 'skin' ? params.tab : 'users'
   );
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-
   const [routineLogsMap, setRoutineLogsMap] = useState<Record<string, RoutineLog[]>>({});
   const [skinPhotosMap, setSkinPhotosMap] = useState<Record<string, ClientSkinPhoto[]>>({});
   const [skinMetricsMap, setSkinMetricsMap] = useState<Record<string, SkinMetricLog[]>>({});
@@ -110,6 +118,8 @@ export default function ManageUsers() {
   const [selectedPhoto, setSelectedPhoto] = useState<ClientSkinPhoto | null>(null);
   const [feedbackText, setFeedbackText] = useState('');
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
+
+  const [progressModalUser, setProgressModalUser] = useState<MergedUser | null>(null);
 
   useEffect(() => {
     let usersMap: Record<string, any> = {};
@@ -223,15 +233,16 @@ export default function ManageUsers() {
     }
   };
 
+  // Auto-load data for all visible users when tab or filtered list changes
+  useEffect(() => {
+    if (activeTab === 'users') return;
+    filtered.forEach((user) => {
+      loadClientDetails(user.id, activeTab);
+    });
+  }, [activeTab, filtered]);
+
   const handleTabChange = (tab: AdminTab) => {
     setActiveTab(tab);
-    if (expandedId) loadClientDetails(expandedId, tab);
-  };
-
-  const handleToggleExpanded = (clientId: string) => {
-    const nextId = expandedId === clientId ? null : clientId;
-    setExpandedId(nextId);
-    if (nextId) loadClientDetails(nextId);
   };
 
   const handleDelete = (user: MergedUser) => {
@@ -352,8 +363,67 @@ export default function ManageUsers() {
 
     if (isLoading) return <ActivityIndicator size="small" color={COLORS.primary} style={styles.panelLoader} />;
 
+    // --- Weekly consistency (last 4 weeks, max 14 routines/week: 2/day x 7) ---
+    const getISOWeekKey = (date: Date) => {
+      const d = new Date(date);
+      d.setHours(0, 0, 0, 0);
+      d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+      const yearStart = new Date(d.getFullYear(), 0, 1);
+      const week = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+      return `${d.getFullYear()}-W${String(week).padStart(2, '0')}`;
+    };
+
+    const getMonthKey = (date: Date) =>
+      `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+    const now = new Date();
+
+    // Build week buckets for last 4 weeks
+    const weekBuckets: { label: string; key: string; count: number }[] = Array.from({ length: 4 }, (_, i) => {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i * 7);
+      const key = getISOWeekKey(d);
+      const weekStart = new Date(d);
+      weekStart.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+      const label = `${weekStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+      return { label, key, count: 0 };
+    }).reverse();
+
+    // Build month buckets for last 4 months
+    const monthBuckets: { label: string; key: string; count: number }[] = Array.from({ length: 4 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      return {
+        label: d.toLocaleDateString(undefined, { month: 'short', year: '2-digit' }),
+        key: getMonthKey(d),
+        count: 0,
+      };
+    }).reverse();
+
+    logs.forEach((log) => {
+      if (!log.logDate || typeof log.logDate.toDate !== 'function') return;
+      const date = log.logDate.toDate();
+      const wk = getISOWeekKey(date);
+      const mo = getMonthKey(date);
+      const wb = weekBuckets.find((b) => b.key === wk);
+      if (wb) wb.count++;
+      const mb = monthBuckets.find((b) => b.key === mo);
+      if (mb) mb.count++;
+    });
+
+    const MAX_PER_WEEK = 14;
+    const MAX_PER_MONTH = 60;
+
+    // Trend: compare current week vs previous week
+    const thisWeek = weekBuckets[3]?.count ?? 0;
+    const lastWeek = weekBuckets[2]?.count ?? 0;
+    const trendDiff = thisWeek - lastWeek;
+    const trendIcon = trendDiff > 0 ? 'trending-up' : trendDiff < 0 ? 'trending-down' : 'remove';
+    const trendColor = trendDiff > 0 ? '#51cf66' : trendDiff < 0 ? '#ff6b6b' : COLORS.textSecondary;
+    const trendLabel = trendDiff > 0 ? `+${trendDiff} vs last week` : trendDiff < 0 ? `${trendDiff} vs last week` : 'Same as last week';
+
     return (
       <>
+        {/* Summary row */}
         <View style={styles.summaryRow}>
           <View style={styles.summaryItem}>
             <Text style={styles.summaryValue}>{user.streak ?? 0}</Text>
@@ -361,15 +431,63 @@ export default function ManageUsers() {
           </View>
           <View style={styles.summaryItem}>
             <Text style={styles.summaryValue}>{logs.length}</Text>
-            <Text style={styles.summaryLabel}>Routine Logs</Text>
+            <Text style={styles.summaryLabel}>Total Logs</Text>
           </View>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryValue}>{photos.length}</Text>
-            <Text style={styles.summaryLabel}>Photos</Text>
+          <View style={[styles.summaryItem, { borderColor: trendColor, borderWidth: 1 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Ionicons name={trendIcon as any} size={16} color={trendColor} />
+              <Text style={[styles.summaryValue, { color: trendColor }]}>{thisWeek}</Text>
+            </View>
+            <Text style={styles.summaryLabel}>This Week</Text>
           </View>
         </View>
 
-        <Text style={styles.panelTitle}>Skin Progress Photos</Text>
+        {/* Trend label */}
+        <View style={styles.trendRow}>
+          <Ionicons name={trendIcon as any} size={13} color={trendColor} />
+          <Text style={[styles.trendLabel, { color: trendColor }]}>{trendLabel}</Text>
+        </View>
+
+        {/* Weekly consistency */}
+        <Text style={styles.panelTitle}>Weekly Consistency</Text>
+        <View style={styles.consistencyGrid}>
+          {weekBuckets.map((w, i) => {
+            const pct = Math.min(100, Math.round((w.count / MAX_PER_WEEK) * 100));
+            const isCurrentWeek = i === weekBuckets.length - 1;
+            return (
+              <View key={w.key} style={styles.consistencyItem}>
+                <Text style={[styles.consistencyPct, isCurrentWeek && { color: COLORS.primary }]}>{pct}%</Text>
+                <View style={styles.consistencyBarTrack}>
+                  <View style={[styles.consistencyBarFill, { height: `${pct}%` as any, backgroundColor: isCurrentWeek ? COLORS.primary : '#a29bfe' }]} />
+                </View>
+                <Text style={styles.consistencyWeekLabel}>{w.label}</Text>
+                <Text style={styles.consistencyCount}>{w.count}/{MAX_PER_WEEK}</Text>
+              </View>
+            );
+          })}
+        </View>
+
+        {/* Monthly consistency */}
+        <Text style={[styles.panelTitle, { marginTop: 14 }]}>Monthly Consistency</Text>
+        <View style={styles.monthGrid}>
+          {monthBuckets.map((m, i) => {
+            const pct = Math.min(100, Math.round((m.count / MAX_PER_MONTH) * 100));
+            const isCurrentMonth = i === monthBuckets.length - 1;
+            return (
+              <View key={m.key} style={[styles.monthCard, isCurrentMonth && styles.monthCardActive]}>
+                <Text style={[styles.monthLabel, isCurrentMonth && { color: COLORS.primary }]}>{m.label}</Text>
+                <Text style={[styles.monthPct, isCurrentMonth && { color: COLORS.primary }]}>{pct}%</Text>
+                <View style={styles.monthBarTrack}>
+                  <View style={[styles.monthBarFill, { width: `${pct}%` as any, backgroundColor: isCurrentMonth ? COLORS.primary : '#4ecdc4' }]} />
+                </View>
+                <Text style={styles.monthCount}>{m.count} routines</Text>
+              </View>
+            );
+          })}
+        </View>
+
+        {/* Skin progress photos */}
+        <Text style={[styles.panelTitle, { marginTop: 14 }]}>Skin Progress Photos</Text>
         {photos.length === 0 ? (
           <Text style={styles.emptyInline}>No skin progress photos found.</Text>
         ) : (
@@ -401,7 +519,8 @@ export default function ManageUsers() {
           </ScrollView>
         )}
 
-        <Text style={styles.panelTitle}>Activity History</Text>
+        {/* Activity history */}
+        <Text style={[styles.panelTitle, { marginTop: 14 }]}>Activity History</Text>
         {logs.length === 0 ? (
           <Text style={styles.emptyInline}>No routine logs recorded.</Text>
         ) : (
@@ -411,7 +530,7 @@ export default function ManageUsers() {
                 <View style={styles.logIndicator} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.logDate}>{formatDate(log.logDate, true)}</Text>
-                    <Text style={styles.logStatus}>{log.status ? `Routine ${log.status}` : log.type ?? 'Routine log'}</Text>
+                  <Text style={styles.logStatus}>{log.status ? `Routine ${log.status}` : log.type ?? 'Routine log'}</Text>
                 </View>
                 <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />
               </View>
@@ -519,39 +638,185 @@ export default function ManageUsers() {
             <Text style={styles.emptyText}>No clients found</Text>
           </View>
         ) : (
-          <View style={styles.list}>
-            {filtered.map((user) => {
-              const isExpanded = expandedId === user.id;
+          <View style={styles.tableWrapper}>
+            {/* Table header — columns change per tab */}
+            {activeTab === 'users' && (
+              <View style={styles.tableHeader}>
+                <Text style={[styles.tableHeaderCell, { flex: 2 }]}>Client</Text>
+                <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Skin Type</Text>
+                <Text style={[styles.tableHeaderCell, { flex: 0.6 }]}>Age</Text>
+                <Text style={[styles.tableHeaderCell, { flex: 0.8 }]}>Streak</Text>
+                <Text style={[styles.tableHeaderCell, { flex: 0.9 }]}>Adherence</Text>
+                <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Phone</Text>
+                <Text style={[styles.tableHeaderCell, { flex: 0.8 }]}>Status</Text>
+                <Text style={[styles.tableHeaderCell, { flex: 0.8 }]}>Actions</Text>
+              </View>
+            )}
+            {activeTab === 'progress' && (
+              <View style={styles.tableHeader}>
+                <Text style={[styles.tableHeaderCell, { flex: 2 }]}>Client</Text>
+                <Text style={[styles.tableHeaderCell, { flex: 0.8 }]}>Streak</Text>
+                <Text style={[styles.tableHeaderCell, { flex: 0.8 }]}>Total Logs</Text>
+                <Text style={[styles.tableHeaderCell, { flex: 1 }]}>This Week</Text>
+                <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Last Week</Text>
+                <Text style={[styles.tableHeaderCell, { flex: 1 }]}>This Month</Text>
+                <Text style={[styles.tableHeaderCell, { flex: 0.8 }]}>Trend</Text>
+                <Text style={[styles.tableHeaderCell, { flex: 0.8 }]}>Detail</Text>
+              </View>
+            )}
+            {activeTab === 'skin' && (
+              <View style={styles.tableHeader}>
+                <Text style={[styles.tableHeaderCell, { flex: 2 }]}>Client</Text>
+                <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Hydration</Text>
+                <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Oiliness</Text>
+                <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Sensitivity</Text>
+                <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Brightness</Text>
+                <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Last Entry</Text>
+              </View>
+            )}
+
+            {filtered.map((user, index) => {
               const name = getClientName(user);
+              const isEven = index % 2 === 0;
 
-              return (
-                <View key={user.id} style={styles.card}>
-                  <Pressable style={styles.cardHeader} onPress={() => handleToggleExpanded(user.id)}>
-                    <View style={styles.avatar}>
-                      <Text style={styles.avatarText}>{name.charAt(0).toUpperCase()}</Text>
+              if (activeTab === 'users') {
+                return (
+                  <View key={user.id} style={[styles.tableRow, isEven && styles.tableRowEven]}>
+                    <View style={[styles.tableCell, { flex: 2 }]}>
+                      <View style={styles.avatar}>
+                        <Text style={styles.avatarText}>{name.charAt(0).toUpperCase()}</Text>
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.userName} numberOfLines={1}>{name}</Text>
+                        <Text style={styles.userEmail} numberOfLines={1}>{user.email || 'No email'}</Text>
+                      </View>
                     </View>
-                    <View style={styles.userSummary}>
-                      <Text style={styles.userName} numberOfLines={1}>{name}</Text>
-                      <Text style={styles.userEmail} numberOfLines={1}>{user.email || 'No email'}</Text>
+                    <Text style={[styles.tableCellText, { flex: 1 }]} numberOfLines={1}>{user.skinType ?? '—'}</Text>
+                    <Text style={[styles.tableCellText, { flex: 0.6 }]}>{user.age ?? '—'}</Text>
+                    <Text style={[styles.tableCellText, { flex: 0.8 }]}>{user.streak ?? 0}d</Text>
+                    <Text style={[styles.tableCellText, { flex: 0.9 }]}>{user.dailyAdherence ?? 0}%</Text>
+                    <Text style={[styles.tableCellText, { flex: 1 }]} numberOfLines={1}>{formatPhone(user.phoneNumber)}</Text>
+                    <View style={{ flex: 0.8 }}>
+                      <View style={[styles.statusPill, { backgroundColor: user.active === false ? 'rgba(255,107,107,0.12)' : 'rgba(81,207,102,0.12)' }]}>
+                        <Text style={[styles.statusText, { color: user.active === false ? '#ff6b6b' : '#51cf66' }]}>
+                          {user.active === false ? 'Inactive' : 'Active'}
+                        </Text>
+                      </View>
                     </View>
-                    <View style={[styles.statusPill, { backgroundColor: user.active === false ? 'rgba(255,107,107,0.12)' : 'rgba(81,207,102,0.12)' }]}>
-                      <Text style={[styles.statusText, { color: user.active === false ? '#ff6b6b' : '#51cf66' }]}>
-                        {user.active === false ? 'Inactive' : 'Active'}
-                      </Text>
+                    <View style={[styles.tableCell, { flex: 0.8, gap: 6 }]}>
+                      <Pressable style={styles.actionIconBtn} onPress={() => handleToggleActive(user)}>
+                        <Ionicons name={user.active === false ? 'checkmark-circle-outline' : 'ban-outline'} size={16} color={COLORS.textSecondary} />
+                      </Pressable>
+                      <Pressable style={[styles.actionIconBtn, styles.actionIconBtnDanger]} onPress={() => handleDelete(user)}>
+                        <Ionicons name="trash-outline" size={16} color="#ff6b6b" />
+                      </Pressable>
                     </View>
-                    <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={COLORS.textSecondary} />
-                  </Pressable>
+                  </View>
+                );
+              }
 
-                  {isExpanded && (
-                    <View style={styles.details}>
-                      <View style={styles.divider} />
-                      {activeTab === 'users' && renderUserDetails(user)}
-                      {activeTab === 'progress' && renderProgressDetails(user)}
-                      {activeTab === 'skin' && renderSkinDetails(user)}
+              if (activeTab === 'progress') {
+                const logs = routineLogsMap[user.id];
+                const allLogs = logs ?? [];
+
+                const getISOWeekKey = (date: Date) => {
+                  const d = new Date(date);
+                  d.setHours(0, 0, 0, 0);
+                  d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+                  const yearStart = new Date(d.getFullYear(), 0, 1);
+                  const week = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+                  return `${d.getFullYear()}-W${String(week).padStart(2, '0')}`;
+                };
+                const getMonthKey = (date: Date) =>
+                  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+                const now = new Date();
+                const thisWeekKey = getISOWeekKey(now);
+                const lastWeekDate = new Date(now); lastWeekDate.setDate(now.getDate() - 7);
+                const lastWeekKey = getISOWeekKey(lastWeekDate);
+                const thisMonthKey = getMonthKey(now);
+
+                let thisWeekCount = 0, lastWeekCount = 0, thisMonthCount = 0;
+                allLogs.forEach((log) => {
+                  if (!log.logDate || typeof log.logDate.toDate !== 'function') return;
+                  const d = log.logDate.toDate();
+                  if (getISOWeekKey(d) === thisWeekKey) thisWeekCount++;
+                  if (getISOWeekKey(d) === lastWeekKey) lastWeekCount++;
+                  if (getMonthKey(d) === thisMonthKey) thisMonthCount++;
+                });
+
+                const trendDiff = thisWeekCount - lastWeekCount;
+                const trendIcon = trendDiff > 0 ? 'trending-up' : trendDiff < 0 ? 'trending-down' : 'remove';
+                const trendColor = trendDiff > 0 ? '#51cf66' : trendDiff < 0 ? '#ff6b6b' : COLORS.textSecondary;
+
+                return (
+                  <View key={user.id} style={[styles.tableRow, isEven && styles.tableRowEven]}>
+                    <View style={[styles.tableCell, { flex: 2 }]}>
+                      <View style={styles.avatar}>
+                        <Text style={styles.avatarText}>{name.charAt(0).toUpperCase()}</Text>
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.userName} numberOfLines={1}>{name}</Text>
+                        <Text style={styles.userEmail} numberOfLines={1}>{user.email || 'No email'}</Text>
+                      </View>
                     </View>
-                  )}
-                </View>
-              );
+                    <Text style={[styles.tableCellText, { flex: 0.8 }]}>{user.streak ?? 0}d</Text>
+                    {!logs ? (
+                      <ActivityIndicator size="small" color={COLORS.primary} style={{ flex: 4 }} />
+                    ) : (
+                      <>
+                        <Text style={[styles.tableCellText, { flex: 0.8 }]}>{allLogs.length}</Text>
+                        <Text style={[styles.tableCellText, { flex: 1 }]}>{thisWeekCount}/14</Text>
+                        <Text style={[styles.tableCellText, { flex: 1 }]}>{lastWeekCount}/14</Text>
+                        <Text style={[styles.tableCellText, { flex: 1 }]}>{thisMonthCount}/60</Text>
+                        <View style={[styles.tableCell, { flex: 0.8 }]}>
+                          <Ionicons name={trendIcon as any} size={15} color={trendColor} />
+                          <Text style={[styles.tableCellText, { color: trendColor, fontSize: 11 }]}>
+                            {trendDiff > 0 ? `+${trendDiff}` : trendDiff === 0 ? '—' : `${trendDiff}`}
+                          </Text>
+                        </View>
+                        <View style={{ flex: 0.8 }}>
+                          <Pressable style={styles.viewBtn} onPress={() => setProgressModalUser(user)}>
+                            <Ionicons name="eye-outline" size={13} color={COLORS.primary} />
+                            <Text style={styles.viewBtnText}>View</Text>
+                          </Pressable>
+                        </View>
+                      </>
+                    )}
+                  </View>
+                );
+              }
+
+              if (activeTab === 'skin') {
+                const metrics = skinMetricsMap[user.id];
+                const latest = metrics?.[0];
+                return (
+                  <View key={user.id} style={[styles.tableRow, isEven && styles.tableRowEven]}>
+                    <View style={[styles.tableCell, { flex: 2 }]}>
+                      <View style={styles.avatar}>
+                        <Text style={styles.avatarText}>{name.charAt(0).toUpperCase()}</Text>
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.userName} numberOfLines={1}>{name}</Text>
+                        <Text style={styles.userEmail} numberOfLines={1}>{user.email || 'No email'}</Text>
+                      </View>
+                    </View>
+                    {!metrics ? (
+                      <ActivityIndicator size="small" color={COLORS.primary} style={{ flex: 5 }} />
+                    ) : (
+                      <>
+                        <Text style={[styles.tableCellText, { flex: 1, color: '#4ecdc4' }]}>{latest?.hydration ?? '—'}</Text>
+                        <Text style={[styles.tableCellText, { flex: 1, color: '#ff6b6b' }]}>{latest?.oiliness ?? '—'}</Text>
+                        <Text style={[styles.tableCellText, { flex: 1, color: '#f7b731' }]}>{latest?.sensitivity ?? '—'}</Text>
+                        <Text style={[styles.tableCellText, { flex: 1, color: '#a29bfe' }]}>{latest?.brightness ?? '—'}</Text>
+                        <Text style={[styles.tableCellText, { flex: 1 }]}>{formatDate(latest?.date)}</Text>
+                      </>
+                    )}
+                  </View>
+                );
+              }
+
+              return null;
             })}
           </View>
         )}
@@ -582,6 +847,205 @@ export default function ManageUsers() {
           </View>
         </View>
       </Modal>
+
+      {/* Progress Detail Modal */}
+      <Modal
+        visible={!!progressModalUser}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setProgressModalUser(null)}
+      >
+        <View style={styles.progressModalOverlay}>
+          <View style={styles.progressModalContainer}>
+            {/* Header */}
+            <View style={styles.progressModalHeader}>
+              <View style={styles.tableCell}>
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>
+                    {progressModalUser ? getClientName(progressModalUser).charAt(0).toUpperCase() : ''}
+                  </Text>
+                </View>
+                <View>
+                  <Text style={styles.progressModalName}>{progressModalUser ? getClientName(progressModalUser) : ''}</Text>
+                  <Text style={styles.userEmail}>{progressModalUser?.email || ''}</Text>
+                </View>
+              </View>
+              <Pressable onPress={() => setProgressModalUser(null)} style={styles.progressModalClose}>
+                <Ionicons name="close" size={22} color={COLORS.textPrimary} />
+              </Pressable>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.progressModalScroll} showsVerticalScrollIndicator={false}>
+              {progressModalUser && (() => {
+                const user = progressModalUser;
+                const logs = routineLogsMap[user.id] ?? [];
+                const photos = skinPhotosMap[user.id] ?? [];
+
+                const getISOWeekKey = (date: Date) => {
+                  const d = new Date(date);
+                  d.setHours(0, 0, 0, 0);
+                  d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+                  const yearStart = new Date(d.getFullYear(), 0, 1);
+                  const week = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+                  return `${d.getFullYear()}-W${String(week).padStart(2, '0')}`;
+                };
+                const getMonthKey = (date: Date) =>
+                  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+                const now = new Date();
+                const weekBuckets: { label: string; key: string; count: number }[] = Array.from({ length: 4 }, (_, i) => {
+                  const d = new Date(now);
+                  d.setDate(d.getDate() - i * 7);
+                  const key = getISOWeekKey(d);
+                  const weekStart = new Date(d);
+                  weekStart.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+                  return { label: weekStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }), key, count: 0 };
+                }).reverse();
+
+                const monthBuckets: { label: string; key: string; count: number }[] = Array.from({ length: 4 }, (_, i) => {
+                  const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                  return { label: d.toLocaleDateString(undefined, { month: 'short', year: '2-digit' }), key: getMonthKey(d), count: 0 };
+                }).reverse();
+
+                logs.forEach((log) => {
+                  if (!log.logDate || typeof log.logDate.toDate !== 'function') return;
+                  const date = log.logDate.toDate();
+                  const wb = weekBuckets.find((b) => b.key === getISOWeekKey(date));
+                  if (wb) wb.count++;
+                  const mb = monthBuckets.find((b) => b.key === getMonthKey(date));
+                  if (mb) mb.count++;
+                });
+
+                const MAX_PER_WEEK = 14;
+                const MAX_PER_MONTH = 60;
+                const thisWeek = weekBuckets[3]?.count ?? 0;
+                const lastWeek = weekBuckets[2]?.count ?? 0;
+                const trendDiff = thisWeek - lastWeek;
+                const trendIcon = trendDiff > 0 ? 'trending-up' : trendDiff < 0 ? 'trending-down' : 'remove';
+                const trendColor = trendDiff > 0 ? '#51cf66' : trendDiff < 0 ? '#ff6b6b' : COLORS.textSecondary;
+                const trendLabel = trendDiff > 0 ? `+${trendDiff} vs last week` : trendDiff < 0 ? `${trendDiff} vs last week` : 'Same as last week';
+
+                return (
+                  <>
+                    {/* Summary cards */}
+                    <View style={styles.summaryRow}>
+                      <View style={styles.summaryItem}>
+                        <Text style={styles.summaryValue}>{user.streak ?? 0}</Text>
+                        <Text style={styles.summaryLabel}>Day Streak</Text>
+                      </View>
+                      <View style={styles.summaryItem}>
+                        <Text style={styles.summaryValue}>{logs.length}</Text>
+                        <Text style={styles.summaryLabel}>Total Logs</Text>
+                      </View>
+                      <View style={[styles.summaryItem, { borderColor: trendColor, borderWidth: 1 }]}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Ionicons name={trendIcon as any} size={16} color={trendColor} />
+                          <Text style={[styles.summaryValue, { color: trendColor }]}>{thisWeek}</Text>
+                        </View>
+                        <Text style={styles.summaryLabel}>This Week</Text>
+                      </View>
+                    </View>
+
+                    {/* Trend */}
+                    <View style={styles.trendRow}>
+                      <Ionicons name={trendIcon as any} size={13} color={trendColor} />
+                      <Text style={[styles.trendLabel, { color: trendColor }]}>{trendLabel}</Text>
+                    </View>
+
+                    {/* Weekly chart */}
+                    <Text style={styles.panelTitle}>Weekly Consistency</Text>
+                    <View style={styles.consistencyGrid}>
+                      {weekBuckets.map((w, i) => {
+                        const pct = Math.min(100, Math.round((w.count / MAX_PER_WEEK) * 100));
+                        const isCurrent = i === weekBuckets.length - 1;
+                        return (
+                          <View key={w.key} style={styles.consistencyItem}>
+                            <Text style={[styles.consistencyPct, isCurrent && { color: COLORS.primary }]}>{pct}%</Text>
+                            <View style={styles.consistencyBarTrack}>
+                              <View style={[styles.consistencyBarFill, { height: `${pct}%` as any, backgroundColor: isCurrent ? COLORS.primary : '#a29bfe' }]} />
+                            </View>
+                            <Text style={styles.consistencyWeekLabel}>{w.label}</Text>
+                            <Text style={styles.consistencyCount}>{w.count}/{MAX_PER_WEEK}</Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+
+                    {/* Monthly chart */}
+                    <Text style={[styles.panelTitle, { marginTop: 14 }]}>Monthly Consistency</Text>
+                    <View style={styles.monthGrid}>
+                      {monthBuckets.map((m, i) => {
+                        const pct = Math.min(100, Math.round((m.count / MAX_PER_MONTH) * 100));
+                        const isCurrent = i === monthBuckets.length - 1;
+                        return (
+                          <View key={m.key} style={[styles.monthCard, isCurrent && styles.monthCardActive]}>
+                            <Text style={[styles.monthLabel, isCurrent && { color: COLORS.primary }]}>{m.label}</Text>
+                            <Text style={[styles.monthPct, isCurrent && { color: COLORS.primary }]}>{pct}%</Text>
+                            <View style={styles.monthBarTrack}>
+                              <View style={[styles.monthBarFill, { width: `${pct}%` as any, backgroundColor: isCurrent ? COLORS.primary : '#4ecdc4' }]} />
+                            </View>
+                            <Text style={styles.monthCount}>{m.count} routines</Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+
+                    {/* Skin progress photos */}
+                    <Text style={[styles.panelTitle, { marginTop: 14 }]}>Skin Progress Photos</Text>
+                    {photos.length === 0 ? (
+                      <Text style={styles.emptyInline}>No skin progress photos found.</Text>
+                    ) : (
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoStrip}>
+                        {photos.map((photo) => (
+                          <View key={photo.id} style={styles.photoCard}>
+                            <Image source={{ uri: photo.imageUrl }} style={styles.skinImage} />
+                            <Text style={styles.photoDate}>{formatDate(photo.date)}</Text>
+                            {photo.consultantFeedback && (
+                              <View style={styles.feedbackPreview}>
+                                <Text style={styles.feedbackLabel}>Consultant Note</Text>
+                                <Text style={styles.feedbackText} numberOfLines={3}>{photo.consultantFeedback}</Text>
+                              </View>
+                            )}
+                            <Pressable
+                              style={styles.feedbackBtn}
+                              onPress={() => {
+                                setSelectedPhoto(photo);
+                                setFeedbackText(photo.consultantFeedback || '');
+                                setFeedbackModalVisible(true);
+                              }}
+                            >
+                              <Text style={styles.feedbackBtnText}>{photo.consultantFeedback ? 'Edit Feedback' : 'Add Feedback'}</Text>
+                            </Pressable>
+                          </View>
+                        ))}
+                      </ScrollView>
+                    )}
+
+                    {/* Activity history */}
+                    <Text style={[styles.panelTitle, { marginTop: 14 }]}>Activity History</Text>
+                    {logs.length === 0 ? (
+                      <Text style={styles.emptyInline}>No routine logs recorded.</Text>
+                    ) : (
+                      <View style={styles.logsList}>
+                        {logs.map((log) => (
+                          <View key={log.id} style={styles.logRow}>
+                            <View style={styles.logIndicator} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.logDate}>{formatDate(log.logDate, true)}</Text>
+                              <Text style={styles.logStatus}>{log.status ? `Routine ${log.status}` : log.type ?? 'Routine log'}</Text>
+                            </View>
+                            <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </>
+                );
+              })()}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -601,17 +1065,22 @@ const styles = StyleSheet.create({
   searchRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.card, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, gap: 10, borderWidth: 1, borderColor: COLORS.border },
   searchInput: { flex: 1, fontSize: 14, color: COLORS.textPrimary, paddingVertical: 0 },
   countText: { fontSize: 12, color: COLORS.textSecondary, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
-  list: { gap: 10 },
-  card: { backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 },
-  avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(27,58,107,0.12)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  avatarText: { fontSize: 16, fontWeight: '800', color: COLORS.primary },
-  userSummary: { flex: 1, minWidth: 0 },
-  userName: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary },
-  userEmail: { fontSize: 12, color: COLORS.textSecondary, marginTop: 1 },
-  statusPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, flexShrink: 0 },
-  statusText: { fontSize: 11, fontWeight: '700' },
-  details: { paddingHorizontal: 14, paddingBottom: 14 },
+  tableWrapper: { backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
+  tableHeader: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.background, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  tableHeaderCell: { fontSize: 10, fontWeight: '800', color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
+  tableRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  tableRowEven: { backgroundColor: 'rgba(247,249,252,0.6)' },
+  tableCell: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: 6 },
+  tableCellText: { fontSize: 13, color: COLORS.textPrimary, fontWeight: '500' },
+  actionIconBtn: { width: 28, height: 28, borderRadius: 7, backgroundColor: COLORS.background, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center' },
+  actionIconBtnDanger: { borderColor: 'rgba(255,107,107,0.3)', backgroundColor: 'rgba(255,107,107,0.06)' },
+  avatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(27,58,107,0.12)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  avatarText: { fontSize: 13, fontWeight: '800', color: COLORS.primary },
+  userName: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary },
+  userEmail: { fontSize: 11, color: COLORS.textSecondary, marginTop: 1 },
+  statusPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, alignSelf: 'flex-start' },
+  statusText: { fontSize: 10, fontWeight: '700' },
+  details: { paddingHorizontal: 14, paddingBottom: 14, paddingTop: 4 },
   divider: { height: 1, backgroundColor: COLORS.border, marginBottom: 14 },
   detailGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 12 },
   detailItem: { width: '30%', minWidth: 110 },
@@ -659,8 +1128,33 @@ const styles = StyleSheet.create({
   barTrack: { flex: 1, height: 8, backgroundColor: COLORS.border, borderRadius: 4, overflow: 'hidden' },
   barFill: { height: '100%', borderRadius: 4 },
   metricValue: { width: 28, fontSize: FONT_SIZE.xs, fontWeight: '700', textAlign: 'right' },
+  trendRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
+  trendLabel: { fontSize: 11, fontWeight: '700' },
+  consistencyGrid: { flexDirection: 'row', gap: 8, marginBottom: 4, height: 120, alignItems: 'flex-end' },
+  consistencyItem: { flex: 1, alignItems: 'center', gap: 3 },
+  consistencyPct: { fontSize: 11, fontWeight: '800', color: COLORS.textSecondary },
+  consistencyBarTrack: { flex: 1, width: '100%', maxWidth: 32, backgroundColor: COLORS.border, borderRadius: 4, overflow: 'hidden', justifyContent: 'flex-end' },
+  consistencyBarFill: { width: '100%', borderRadius: 4 },
+  consistencyWeekLabel: { fontSize: 9, color: COLORS.textSecondary, fontWeight: '600', textAlign: 'center' },
+  consistencyCount: { fontSize: 9, color: COLORS.textSecondary, textAlign: 'center' },
+  monthGrid: { gap: 6 },
+  monthCard: { backgroundColor: COLORS.background, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: COLORS.border, gap: 6 },
+  monthCardActive: { borderColor: COLORS.primary, backgroundColor: 'rgba(255,139,167,0.06)' },
+  monthLabel: { fontSize: 11, fontWeight: '700', color: COLORS.textSecondary, textTransform: 'uppercase' },
+  monthPct: { fontSize: 20, fontWeight: '800', color: COLORS.textPrimary },
+  monthBarTrack: { height: 6, backgroundColor: COLORS.border, borderRadius: 3, overflow: 'hidden' },
+  monthBarFill: { height: '100%', borderRadius: 3 },
+  monthCount: { fontSize: 10, color: COLORS.textSecondary, fontWeight: '600' },
   emptyContainer: { alignItems: 'center', marginTop: 80, gap: 12 },
   emptyText: { fontSize: 14, color: COLORS.textSecondary },
+  viewBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 7, borderWidth: 1, borderColor: COLORS.primary, backgroundColor: 'rgba(255,139,167,0.08)', alignSelf: 'flex-start' },
+  viewBtnText: { fontSize: 11, fontWeight: '700', color: COLORS.primary },
+  progressModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  progressModalContainer: { backgroundColor: COLORS.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '90%', paddingBottom: 30 },
+  progressModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 18, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  progressModalName: { fontSize: 15, fontWeight: '800', color: COLORS.textPrimary },
+  progressModalClose: { padding: 4 },
+  progressModalScroll: { padding: 18, gap: 4 },
   feedbackModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
   feedbackModal: { backgroundColor: COLORS.card, borderRadius: BORDER_RADIUS.lg, padding: SPACING.lg },
   feedbackModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },

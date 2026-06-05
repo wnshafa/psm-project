@@ -42,6 +42,17 @@ interface Product {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
+const CATEGORIES = [
+  "Cleanser",
+  "Toner",
+  "Serum",
+  "Moisturiser",
+  "Sunscreen",
+  "Mask",
+  "Eye Cream",
+  "Exfoliator",
+];
+
 const SKIN_TYPES: SkinType[] = [
   "Normal",
   "Dry",
@@ -302,13 +313,22 @@ export default function ManageProducts() {
 
               {/* Category */}
               <Text style={styles.fieldLabel}>Category *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. Toner, Serum, Moisturiser"
-                placeholderTextColor={COLORS.textSecondary}
-                value={form.category}
-                onChangeText={(v) => setForm((f) => ({ ...f, category: v }))}
-              />
+              <View style={styles.optionGrid}>
+                {CATEGORIES.map((cat) => {
+                  const selected = form.category === cat;
+                  return (
+                    <TouchableOpacity
+                      key={cat}
+                      style={[styles.optionChip, selected && styles.optionChipSelected]}
+                      onPress={() => setForm((f) => ({ ...f, category: cat }))}
+                    >
+                      <Text style={[styles.optionChipText, selected && styles.optionChipTextSelected]}>
+                        {cat}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
 
               {/* Description */}
               <Text style={styles.fieldLabel}>Description</Text>

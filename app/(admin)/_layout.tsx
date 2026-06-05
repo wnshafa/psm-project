@@ -140,16 +140,6 @@ export default function AdminLayout() {
         />
 
         <Drawer.Screen
-          name="userProgress"
-          options={{
-            drawerItemStyle: { display: 'none' },
-            drawerLabel: 'View User Progress',
-            title: 'User Progress',
-            drawerIcon: ({ color }) => <Ionicons name="analytics-outline" size={20} color={color} />,
-          }}
-        />
-
-        <Drawer.Screen
           name="manageUsers"
           options={{
             drawerLabel: 'Client Management',
