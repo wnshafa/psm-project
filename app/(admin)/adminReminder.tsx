@@ -25,6 +25,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { COLORS, BORDER_RADIUS, FONT_SIZE, SPACING } from '../../src/constants/theme';
 import { auth, db } from "../../src/lib/firebase";
+import { useClientsWithProfiles } from '../../src/hooks/useClientsWithProfiles';
+import { clientPath } from '../../src/constants/firestore';
 
 // --- Interfaces ---
 interface SearchableSelectProps {
@@ -113,7 +115,7 @@ const SearchableSelect = ({ label, data, selectedItem, onSelect, displayKey, pla
 
 // --- Main Component ---
 export default function AdminReminder() {
-    const [clients, setClients] = useState<any[]>([]);
+    const { clients } = useClientsWithProfiles();
     const [templates, setTemplates] = useState<any[]>([]);
     const [pastReminders, setPastReminders] = useState<ReminderLog[]>([]);
     const [selectedClient, setSelectedClient] = useState<any | null>(null);
@@ -122,39 +124,7 @@ export default function AdminReminder() {
     const [newTemplateTitle, setNewTemplateTitle] = useState("");
     const [newTemplateMessage, setNewTemplateMessage] = useState("");
 
-    // 1. Fetch Clients and Users to merge names
-    useEffect(() => {
-        let allClients: any[] = [];
-        let allUsers: any[] = [];
-        
-        const unsubClients = onSnapshot(collection(db, "clients"), (snapshot) => {
-            allClients = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            mergeClientData();
-        });
-        
-        const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
-            allUsers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            mergeClientData();
-        });
-        
-        const mergeClientData = () => {
-            const clientsWithNames = allClients.map(client => {
-                const userDoc = allUsers.find(u => u.id === client.id);
-                return {
-                    id: client.id,
-                    name: userDoc?.fullName || userDoc?.name || client.fullName || "Unnamed Client",
-                    email: userDoc?.email || client.email || "",
-                    pushToken: client.pushToken || userDoc?.pushToken || null,
-                    ...client
-                };
-            });
-            setClients(clientsWithNames);
-        };
-        
-        return () => { unsubClients(); unsubUsers(); };
-    }, []);
-
-    // 2. Fetch Templates
+    // 1. Fetch Templates
     useEffect(() => {
       const unsub = onSnapshot(collection(db, "reminderTemplate"), (snapshot) => {
           setTemplates(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -165,11 +135,11 @@ export default function AdminReminder() {
       return () => unsub();
   }, []);
 
-    // 3. Fetch History (Requires Composite Index in Firestore)
+    // 2. Fetch History (Requires Composite Index in Firestore)
     useEffect(() => {
         // Query must match 'clientID' string and 'date' field
         let q = selectedClient 
-            ? query(collection(db, "reminder"), where("clientID", "==", `/clients/${selectedClient.id}`), orderBy("date", "desc"), limit(15))
+            ? query(collection(db, "reminder"), where("clientID", "==", clientPath(selectedClient.id)), orderBy("date", "desc"), limit(15))
             : query(collection(db, "reminder"), orderBy("date", "desc"), limit(10));
 
         return onSnapshot(q, (snapshot) => {
@@ -179,7 +149,7 @@ export default function AdminReminder() {
         });
     }, [selectedClient]);
 
-    // 4. Send Reminder Logic
+    // 3. Send Reminder Logic
     const handleCreateReminder = async () => {
         if (!selectedClient || !selectedTemplate) {
             Alert.alert("Error", "Please select a client and a template.");
@@ -188,7 +158,7 @@ export default function AdminReminder() {
 
         try {
             await addDoc(collection(db, "reminder"), {
-                clientID: `/clients/${selectedClient.id}`,
+                clientID: clientPath(selectedClient.id),
                 clientName: selectedClient.name || "Client",
                 templateID: `/reminderTemplate/${selectedTemplate.id}`,
                 templateTitle: selectedTemplate.title,
@@ -206,7 +176,7 @@ export default function AdminReminder() {
         }
     };
 
-    // 5. Template Creation Logic
+    // 4. Template Creation Logic
     const handleCreateTemplate = async () => {
         if (!newTemplateTitle.trim() || !newTemplateMessage.trim()) {
             return Alert.alert("Error", "Fill in all fields.");

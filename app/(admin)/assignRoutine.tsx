@@ -27,6 +27,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { COLORS } from '../../src/constants/theme';
+import { useClientsWithProfiles } from '../../src/hooks/useClientsWithProfiles';
 import { db } from "../../src/lib/firebase";
 
 // --- Helper Component: Searchable Selection Modal ---
@@ -103,48 +104,15 @@ const SearchableSelect = ({ label, data, selectedItem, onSelect, displayKey, pla
 };
 
 export default function AssignRoutine() {
-   const [templates, setTemplates] = useState<any[]>([]);
+  const { clients } = useClientsWithProfiles();
+  const [templates, setTemplates] = useState<any[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<any | null>(null);
-  const [clients, setClients] = useState<any[]>([]);
   const [selectedClient, setSelectedClient] = useState<any | null>(null);
   const [existingRoutines, setExistingRoutines] = useState<any[]>([]);
   const [editingRoutineId, setEditingRoutineId] = useState<string | null>(null);
-  
-  // Updated States
   const [routineType, setRoutineType] = useState<"Morning" | "Night">("Morning");
-  const [duration, setDuration] = useState(""); // NEW: e.g., "4 Weeks"
+  const [duration, setDuration] = useState("");
   const [steps, setSteps] = useState([{ title: '', instructions: '' }]);
-
-  useEffect(() => {
-    // Fetch both collections and merge data
-    let allClients: any[] = [];
-    let allUsers: any[] = [];
-    
-    const unsubClients = onSnapshot(collection(db, 'clients'), (snapshot) => {
-      allClients = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      mergeClientData();
-    });
-    
-    const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
-      allUsers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      mergeClientData();
-    });
-    
-    const mergeClientData = () => {
-      const clientsWithNames = allClients.map(client => {
-        const userDoc = allUsers.find(u => u.id === client.id);
-        return {
-          id: client.id,
-          fullName: userDoc?.fullName || userDoc?.name || client.fullName || client.name || client.email || "Unnamed Client",
-          email: userDoc?.email || client.email || "",
-          ...client
-        };
-      });
-      setClients(clientsWithNames);
-    };
-    
-    return () => { unsubClients(); unsubUsers(); };
-  }, []);
 
   // Fetch Routine Templates
   useEffect(() => {
@@ -276,15 +244,17 @@ const handleDelete = async (id?: string) => {
         steps: steps.map(s => ({ title: s.title.trim(), instructions: s.instructions.trim() }))
       };
 
+      // Check for duplicate type — exclude the routine currently being edited
+      const conflict = existingRoutines.find(
+        r => r.type === routineType && r.id !== editingRoutineId
+      );
+      if (conflict) return Alert.alert("Conflict", `A ${routineType} routine already exists for this client.`);
+
       if (editingRoutineId) {
         await updateDoc(doc(db, "routines", editingRoutineId), routineData);
         Alert.alert("Success", "Updated successfully.");
         cancelEdit();
       } else {
-        // Check for duplicate type (Prevent 2 Morning routines for same client)
-        const exists = existingRoutines.find(r => r.type === routineType);
-        if (exists) return Alert.alert("Conflict", `A ${routineType} routine already exists.`);
-        
         await addDoc(collection(db, 'routines'), routineData);
         Alert.alert("Success", "Assigned successfully.");
         setSteps([{ title: '', instructions: '' }]);

@@ -23,12 +23,13 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { COLORS } from "../../src/constants/theme";
+import { clientPath } from "../../src/constants/firestore";
 import { auth, db } from "../../src/lib/firebase";
 
 const isTimeValid = (type: string) => {
     const hour = new Date().getHours();
     if (type === 'Morning') return hour >= 5 && hour <= 12;
-    if (type === 'Night') return hour >= 18 || hour <= 3;
+    if (type === 'Night') return hour >= 18 || hour < 3;
     return true; 
 };
 
@@ -121,10 +122,16 @@ export default function DisplayRoutine() {
     
             setIsLogging(true); //
     
-            // 3. Calculate and Store (Your existing logic with adherence)
-            const totalAssigned = routines.length; //
-            const completedTodaySet = new Set(completedRoutineIds);
-            const totalCompletedToday = completedTodaySet.has(routine.id) ? completedTodaySet.size : completedTodaySet.size + 1;
+            // 3. Calculate and Store (query fresh count to avoid stale state race condition)
+            const totalAssigned = routines.length;
+            const freshLogsSnap = await getDocs(query(
+                collection(db, 'routineLogs'),
+                where('clientId', '==', user.uid),
+                where('logDate', '>=', Timestamp.fromDate(today))
+            ));
+            const freshCompletedIds = new Set(freshLogsSnap.docs.map(d => d.data().routineID));
+            freshCompletedIds.add(routine.id); // include the one being logged now
+            const totalCompletedToday = freshCompletedIds.size;
             const currentAdherence = Math.round((totalCompletedToday / totalAssigned) * 100);
             const now = new Date();
             const todayKey = getLocalDayKey(now);
@@ -186,7 +193,7 @@ export default function DisplayRoutine() {
             // Dismiss all unread reminders when routine is completed
             const remindersSnap = await getDocs(query(
                 collection(db, 'reminder'),
-                where('clientID', '==', `/clients/${user.uid}`),
+                where('clientID', '==', clientPath(user.uid)),
                 where('status', '==', 'unread')
             ));
             if (!remindersSnap.empty) {

@@ -13,6 +13,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS } from '../../src/constants/theme';
+import { clientPath } from '../../src/constants/firestore';
+import { SKIN_METRICS } from '../../src/constants/metrics';
 import { auth, db } from '../../src/lib/firebase';
 import { ReminderLog } from '../../src/types';
 
@@ -75,7 +77,7 @@ export default function ClientDashboard() {
     const unsubReminder = onSnapshot(
       query(
         collection(db, 'reminder'),
-        where('clientID', '==', `/clients/${user.uid}`),
+        where('clientID', '==', clientPath(user.uid)),
         where('status', '==', 'unread'),
       ),
       (snap) => {
@@ -98,12 +100,7 @@ export default function ClientDashboard() {
       (snap) => {
         if (!snap.empty) {
           const data = snap.docs[0].data();
-          setSkinMetrics([
-            { label: 'Hydration',   value: data.hydration   ?? 50, color: '#4ecdc4' },
-            { label: 'Oiliness',    value: data.oiliness    ?? 50, color: '#ff6b6b' },
-            { label: 'Sensitivity', value: data.sensitivity ?? 50, color: '#f7b731' },
-            { label: 'Brightness',  value: data.brightness  ?? 50, color: '#a29bfe' },
-          ]);
+          setSkinMetrics(SKIN_METRICS.map(m => ({ label: m.label, color: m.color, value: data[m.key] ?? 50 })));
           const date = data.date?.toDate();
           if (date) {
             const diff = Math.floor((Date.now() - date.getTime()) / 86400000);

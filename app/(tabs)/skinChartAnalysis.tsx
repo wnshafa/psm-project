@@ -16,18 +16,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS } from '../../src/constants/theme';
+import { SKIN_METRICS } from '../../src/constants/metrics';
 import { auth, db } from '../../src/lib/firebase';
 
 const CLAUDE_API_KEY = process.env.EXPO_PUBLIC_CLAUDE_API_KEY ?? '';
 
 type SkinMetric = { label: string; value: number; color: string; icon: string };
 
-const METRIC_CONFIG = [
-  { label: 'Hydration',   color: '#4ecdc4', icon: 'water-outline' },
-  { label: 'Oiliness',    color: '#ff6b6b', icon: 'sunny-outline' },
-  { label: 'Sensitivity', color: '#f7b731', icon: 'alert-circle-outline' },
-  { label: 'Brightness',  color: '#a29bfe', icon: 'sparkles-outline' },
-];
+const METRIC_CONFIG = SKIN_METRICS;
 
 function getScoreLabel(value: number) {
   if (value >= 75) return { label: 'High',     color: '#51cf66', bg: 'rgba(81,207,102,0.12)' };

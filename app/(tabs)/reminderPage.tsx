@@ -21,6 +21,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { COLORS } from "../../src/constants/theme";
+import { clientPath } from "../../src/constants/firestore";
 import { auth, db } from "../../src/lib/firebase";
 import { ReminderLog } from '../../src/types';
 
@@ -36,7 +37,7 @@ export default function DisplayReminders() {
         // Query filters for 'unread' to match Admin side and database screenshots
         const q = query(
             collection(db, 'reminder'), 
-            where('clientID', '==', `/clients/${user.uid}`), 
+            where('clientID', '==', clientPath(user.uid)),
             where('status', '==', 'unread') 
         );
         

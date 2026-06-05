@@ -17,6 +17,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { COLORS } from "../../src/constants/theme";
+import { SKIN_METRICS } from '../../src/constants/metrics';
 import { auth, db } from "../../src/lib/firebase";
 
 const SKIN_TYPES = ["Oily", "Dry", "Combination", "Normal", "Sensitive"];
@@ -106,12 +107,7 @@ export default function UserProfile() {
         (snap) => {
           if (!snap.empty) {
             const data = snap.docs[0].data();
-            setSkinMetrics([
-              { label: 'Hydration',   value: data.hydration   ?? 50, color: '#4ecdc4' },
-              { label: 'Oiliness',    value: data.oiliness    ?? 50, color: '#ff6b6b' },
-              { label: 'Sensitivity', value: data.sensitivity ?? 50, color: '#f7b731' },
-              { label: 'Brightness',  value: data.brightness  ?? 50, color: '#a29bfe' },
-            ]);
+            setSkinMetrics(SKIN_METRICS.map(m => ({ label: m.label, color: m.color, value: data[m.key] ?? 50 })));
             const d = data.date?.toDate();
             if (d) setSkinDate(d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }));
           }

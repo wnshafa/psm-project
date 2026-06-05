@@ -6,6 +6,7 @@ import { collection, doc, getDoc, onSnapshot, query, setDoc, where } from 'fireb
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, View } from 'react-native';
 import { COLORS } from '../../src/constants/theme';
+import { clientPath } from '../../src/constants/firestore';
 import { auth, db } from '../../src/lib/firebase';
 
 async function registerPushToken(uid: string) {
@@ -70,7 +71,7 @@ export default function TabLayout() {
             unsubReminders = onSnapshot(
               query(
                 collection(db, 'reminder'),
-                where('clientID', '==', `/clients/${user.uid}`),
+                where('clientID', '==', clientPath(user.uid)),
                 where('status', '==', 'unread')
               ),
               (snap) => setUnreadCount(snap.size)

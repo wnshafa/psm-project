@@ -3,12 +3,9 @@ import {
   collection,
   deleteDoc,
   doc,
-  DocumentData,
   getDocs,
-  onSnapshot,
   orderBy,
   query,
-  QueryDocumentSnapshot,
   Timestamp,
   updateDoc,
   where,
@@ -29,6 +26,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BORDER_RADIUS, COLORS, FONT_SIZE, SPACING } from '../../src/constants/theme';
+import { useClientsWithProfiles } from '../../src/hooks/useClientsWithProfiles';
+import { SKIN_METRICS } from '../../src/constants/metrics';
 import { db } from '../../src/lib/firebase';
 import { RoutineLog, SkinPhoto, UserData } from '../../src/types';
 
@@ -58,12 +57,7 @@ const TABS: { key: AdminTab; label: string; icon: keyof typeof Ionicons.glyphMap
   { key: 'skin', label: 'Skin Metrics', icon: 'pulse-outline' },
 ];
 
-const METRIC_CONFIG = [
-  { key: 'hydration' as const, label: 'Hydration', color: '#4ecdc4' },
-  { key: 'oiliness' as const, label: 'Oiliness', color: '#ff6b6b' },
-  { key: 'sensitivity' as const, label: 'Sensitivity', color: '#f7b731' },
-  { key: 'brightness' as const, label: 'Brightness', color: '#a29bfe' },
-];
+const METRIC_CONFIG = SKIN_METRICS;
 
 const getClientName = (user: MergedUser) => user.fullName ?? user.name ?? 'Unnamed Client';
 
@@ -103,8 +97,8 @@ function MetricBar({ value, color, label }: { value?: number; color: string; lab
 
 export default function ManageUsers() {
   const params = useLocalSearchParams<{ tab?: string }>();
-  const [users, setUsers] = useState<MergedUser[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { clients: rawClients, loading } = useClientsWithProfiles();
+  const users: MergedUser[] = rawClients.map(c => ({ ...c } as MergedUser));
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState<AdminTab>(
     params.tab === 'progress' || params.tab === 'skin' ? params.tab : 'users'
@@ -120,61 +114,6 @@ export default function ManageUsers() {
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
 
   const [progressModalUser, setProgressModalUser] = useState<MergedUser | null>(null);
-
-  useEffect(() => {
-    let usersMap: Record<string, any> = {};
-    let clientsList: any[] = [];
-    let usersReady = false;
-    let clientsReady = false;
-
-    const merge = () => {
-      if (!usersReady || !clientsReady) return;
-
-      const merged = clientsList
-        .map((client) => {
-          const profile = usersMap[client.id] ?? {};
-          return {
-            ...client,
-            ...profile,
-            id: client.id,
-            fullName: profile.fullName ?? profile.name ?? client.fullName ?? client.name ?? 'Unnamed Client',
-            email: profile.email ?? client.email ?? '',
-            active: profile.active ?? client.active,
-            streak: client.streak ?? profile.streak ?? 0,
-            totalCompleted: client.totalCompleted ?? profile.totalCompleted ?? 0,
-            dailyAdherence: client.dailyAdherence ?? profile.dailyAdherence ?? 0,
-            skinType: client.skinType ?? profile.skinType,
-            skinConcern: client.skinConcern ?? profile.skinConcern,
-            age: client.age ?? profile.age,
-            phoneNumber: client.phoneNumber ?? profile.phoneNumber,
-          } as MergedUser;
-        })
-        .sort((a, b) => getClientName(a).localeCompare(getClientName(b)));
-
-      setUsers(merged);
-      setLoading(false);
-    };
-
-    const unsubUsers = onSnapshot(query(collection(db, 'users'), where('role', '!=', 'admin')), (snap) => {
-      usersMap = {};
-      snap.docs.forEach((d) => {
-        usersMap[d.id] = d.data();
-      });
-      usersReady = true;
-      merge();
-    });
-
-    const unsubClients = onSnapshot(collection(db, 'clients'), (snap) => {
-      clientsList = snap.docs.map((d: QueryDocumentSnapshot<DocumentData>) => ({ id: d.id, ...d.data() }));
-      clientsReady = true;
-      merge();
-    });
-
-    return () => {
-      unsubUsers();
-      unsubClients();
-    };
-  }, []);
 
   useEffect(() => {
     if (params.tab === 'progress' || params.tab === 'skin' || params.tab === 'users') {
@@ -233,14 +172,7 @@ export default function ManageUsers() {
     }
   };
 
-  // Auto-load data for all visible users when tab or filtered list changes
-  useEffect(() => {
-    if (activeTab === 'users') return;
-    filtered.forEach((user) => {
-      loadClientDetails(user.id, activeTab);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, filtered]);
+  // Data loads on-demand per row via loadClientDetails when a row is rendered in progress/skin tab
 
   const handleTabChange = (tab: AdminTab) => {
     setActiveTab(tab);
@@ -720,6 +652,7 @@ export default function ManageUsers() {
               }
 
               if (activeTab === 'progress') {
+                if (!routineLogsMap[user.id] && !skinPhotosMap[user.id]) loadClientDetails(user.id, 'progress');
                 const logs = routineLogsMap[user.id];
                 const allLogs = logs ?? [];
 
@@ -792,6 +725,7 @@ export default function ManageUsers() {
               }
 
               if (activeTab === 'skin') {
+                if (!skinMetricsMap[user.id]) loadClientDetails(user.id, 'skin');
                 const metrics = skinMetricsMap[user.id];
                 const latest = metrics?.[0];
                 return (

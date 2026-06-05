@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   collection,
   getDocs,
-  onSnapshot,
   orderBy,
   query,
   Timestamp,
@@ -20,6 +19,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { COLORS, BORDER_RADIUS, FONT_SIZE, SPACING } from '../../src/constants/theme';
+import { useClientsWithProfiles } from '../../src/hooks/useClientsWithProfiles';
 import { db } from "../../src/lib/firebase";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -97,64 +97,18 @@ function SkinLogCard({ log }: { log: SkinLog }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function ClientSkinHistory() {
-  const [clients, setClients] = useState<ClientRow[]>([]);
+  const { clients: rawClients, loading } = useClientsWithProfiles();
+  const clients: ClientRow[] = rawClients.map(c => ({
+    id: c.id,
+    fullName: c.fullName,
+    email: c.email,
+    streak: c.streak ?? 0,
+  }));
   const [filteredClients, setFilteredClients] = useState<ClientRow[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [loading, setLoading] = useState(true);
-
-  // expandedId → the currently open client card
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  // skinLogsMap caches fetched logs per clientId
   const [skinLogsMap, setSkinLogsMap] = useState<Record<string, SkinLog[]>>({});
   const [loadingLogsFor, setLoadingLogsFor] = useState<string | null>(null);
-
-  // ── 1. Fetch clients (realtime) and merge with users collection ──
-  useEffect(() => {
-    let usersMap: Record<string, { fullName?: string; email?: string }> = {};
-
-    // First snapshot: users
-    const unsubUsers = onSnapshot(collection(db, "users"), (usersSnap) => {
-      usersMap = {};
-      usersSnap.docs.forEach((d) => {
-        const data = d.data();
-        usersMap[d.id] = { fullName: data.fullName, email: data.email };
-      });
-
-      // After users update, re-merge with latest clients
-      setClients((prev) =>
-        prev.map((c) => ({
-          ...c,
-          fullName: usersMap[c.id]?.fullName || c.fullName,
-          email: usersMap[c.id]?.email || c.email,
-        }))
-      );
-    });
-
-    // Second snapshot: clients
-    const unsubClients = onSnapshot(collection(db, "clients"), (clientsSnap) => {
-      const list: ClientRow[] = clientsSnap.docs.map((d) => {
-        const data = d.data();
-        const merged = usersMap[d.id] ?? {};
-        return {
-          id: d.id,
-          fullName: merged.fullName || data.fullName || "Unnamed Client",
-          email: merged.email || data.email || "",
-          streak: data.streak ?? 0,
-        };
-      });
-
-      list.sort((a, b) => a.fullName.localeCompare(b.fullName));
-      setClients(list);
-      applyFilter(list, searchQuery);
-      setLoading(false);
-    });
-
-    return () => {
-      unsubUsers();
-      unsubClients();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // ── 2. Keep filtered list in sync with search ──
   useEffect(() => {
