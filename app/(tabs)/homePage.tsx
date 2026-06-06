@@ -147,6 +147,7 @@ export default function ClientDashboard() {
       unsubRoutines();
       unsubLogs();
       unsubReminder();
+      unsubWeekly();
       unsubSkin();
     };
   }, []);
@@ -269,6 +270,41 @@ export default function ClientDashboard() {
             <Text style={styles.statLabel}>Today</Text>
           </View>
         </View>
+
+        {/* ── Weekly Progress ── */}
+        {(() => {
+          const chartWidth = Dimensions.get('window').width - 72;
+          const weekLabels = Array.from({ length: 7 }, (_, i) => {
+            const d = new Date();
+            d.setDate(d.getDate() - (6 - i));
+            return ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'][d.getDay()];
+          });
+          return (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Weekly Progress</Text>
+              <LineChart
+                data={{ labels: weekLabels, datasets: [{ data: weeklyData }] }}
+                width={chartWidth}
+                height={140}
+                fromZero
+                chartConfig={{
+                  backgroundColor: COLORS.card,
+                  backgroundGradientFrom: COLORS.card,
+                  backgroundGradientTo: COLORS.card,
+                  decimalPlaces: 0,
+                  color: (opacity = 1) => `rgba(27, 58, 107, ${opacity})`,
+                  labelColor: () => COLORS.textSecondary,
+                  propsForDots: { r: '4', strokeWidth: '2', stroke: COLORS.primary },
+                  propsForBackgroundLines: { stroke: COLORS.border, strokeDasharray: '' },
+                }}
+                bezier
+                withInnerLines
+                withOuterLines={false}
+                style={styles.chart}
+              />
+            </View>
+          );
+        })()}
 
         {/* ── Latest Reminder ── */}
         {latestReminder && (
