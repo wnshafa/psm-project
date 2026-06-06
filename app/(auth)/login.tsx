@@ -1,7 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { signInWithEmailAndPassword, signOut } from "firebase/auth";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
@@ -18,7 +17,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { COLORS } from "../../src/constants/theme";
-import { auth, db } from "../../src/lib/firebase";
+import { auth } from "../../src/lib/firebase";
+import { canUseCurrentPlatform, getPlatformAccessMessage, getSessionHome, getSessionProfile } from "../../src/lib/session";
 
 export default function Login() {
   const { width } = useWindowDimensions();
@@ -53,40 +53,22 @@ export default function Login() {
       const uid = userCredential.user?.uid;
 
       if (uid) {
-        // 3. Role-Based Check + Platform Enforcement
-        const isWeb = Platform.OS === 'web';
-
-        const adminDoc = await getDoc(doc(db, 'admin', uid));
-        if (adminDoc.exists()) {
-          if (isWeb) {
-            router.replace("../(admin)/homePage");
-          } else {
-            setErrorText("Admin access is web-only. Please visit the admin portal in your browser.");
-          }
-          return;
-        }
-
-        const userDoc = await getDoc(doc(db, 'users', uid));
-        if (userDoc.exists()) {
-          const role = userDoc.data()?.role;
-          if (role === 'admin') {
-            if (isWeb) {
-              router.replace("../(admin)/homePage");
-            } else {
-              setErrorText("Admin access is web-only. Please visit the admin portal in your browser.");
-            }
-          } else {
-            if (!isWeb) {
-              router.replace("../(tabs)/homePage");
-            } else {
-              setErrorText("Client access is mobile-only. Please use the PRESTIGEMY mobile app.");
-            }
-          }
-        } else {
+        const profile = await getSessionProfile(userCredential.user);
+        if (!profile) {
+          await signOut(auth);
           const msg = "User record not found. Please contact support.";
           if (Platform.OS === 'web') setErrorText(msg);
           else Alert.alert("Profile Error", msg);
+          return;
         }
+
+        if (!canUseCurrentPlatform(profile.role)) {
+          await signOut(auth);
+          setErrorText(getPlatformAccessMessage(profile.role));
+          return;
+        }
+
+        router.replace(getSessionHome(profile.role));
       }
     } catch (error: any) {
       // 4. Detailed Firebase Error Handling

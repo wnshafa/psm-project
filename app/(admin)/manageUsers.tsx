@@ -11,7 +11,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { useLocalSearchParams } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -98,11 +98,13 @@ function MetricBar({ value, color, label }: { value?: number; color: string; lab
 export default function ManageUsers() {
   const params = useLocalSearchParams<{ tab?: string }>();
   const { clients: rawClients, loading } = useClientsWithProfiles();
-  const users: MergedUser[] = rawClients.map(c => ({ ...c } as MergedUser));
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState<AdminTab>(
     params.tab === 'progress' || params.tab === 'skin' ? params.tab : 'users'
   );
+  const [activeOverrides, setActiveOverrides] = useState<Record<string, boolean>>({});
+  const [togglingUserId, setTogglingUserId] = useState<string | null>(null);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [routineLogsMap, setRoutineLogsMap] = useState<Record<string, RoutineLog[]>>({});
   const [skinPhotosMap, setSkinPhotosMap] = useState<Record<string, ClientSkinPhoto[]>>({});
   const [skinMetricsMap, setSkinMetricsMap] = useState<Record<string, SkinMetricLog[]>>({});
@@ -116,6 +118,28 @@ export default function ManageUsers() {
   const [progressModalUser, setProgressModalUser] = useState<MergedUser | null>(null);
 
   useEffect(() => {
+    setActiveOverrides((prev) => {
+      let changed = false;
+      const next = { ...prev };
+
+      rawClients.forEach((client) => {
+        const active = (client as MergedUser).active;
+        if (next[client.id] !== undefined && active === next[client.id]) {
+          delete next[client.id];
+          changed = true;
+        }
+      });
+
+      return changed ? next : prev;
+    });
+  }, [rawClients]);
+
+  const users: MergedUser[] = useMemo(() => rawClients.map(c => {
+    const user = { ...c } as MergedUser;
+    return activeOverrides[user.id] === undefined ? user : { ...user, active: activeOverrides[user.id] };
+  }), [activeOverrides, rawClients]);
+
+  useEffect(() => {
     if (params.tab === 'progress' || params.tab === 'skin' || params.tab === 'users') {
       setActiveTab(params.tab);
     }
@@ -127,7 +151,7 @@ export default function ManageUsers() {
     return users.filter((u) => getClientName(u).toLowerCase().includes(q) || (u.email ?? '').toLowerCase().includes(q));
   }, [search, users]);
 
-  const loadClientDetails = async (clientId: string, tab: AdminTab = activeTab) => {
+  const loadClientDetails = useCallback(async (clientId: string, tab: AdminTab = activeTab) => {
     if (tab === 'users') return;
 
     const hasProgress = routineLogsMap[clientId] && skinPhotosMap[clientId];
@@ -170,26 +194,56 @@ export default function ManageUsers() {
     } finally {
       setLoadingDetailsFor(null);
     }
-  };
+  }, [activeTab, routineLogsMap, skinMetricsMap, skinPhotosMap]);
 
-  // Data loads on-demand per row via loadClientDetails when a row is rendered in progress/skin tab
+  useEffect(() => {
+    if (activeTab === 'users') return;
+
+    filtered.forEach((user) => {
+      if (!user.id) return;
+      void loadClientDetails(user.id, activeTab);
+    });
+  }, [activeTab, filtered, loadClientDetails]);
 
   const handleTabChange = (tab: AdminTab) => {
     setActiveTab(tab);
   };
 
+  const getErrorMessage = (error: unknown, fallback: string) => {
+    if (error instanceof Error && error.message) return error.message;
+    return fallback;
+  };
+
   const handleDelete = (user: MergedUser) => {
+    if (!user.id) {
+      Alert.alert('Error', 'This user record is missing an ID and cannot be removed.');
+      return;
+    }
+
+    if (deletingUserId || togglingUserId === user.id) return;
+
     Alert.alert('Remove User', `Are you sure you want to remove ${getClientName(user)}?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove',
         style: 'destructive',
         onPress: async () => {
+          setDeletingUserId(user.id);
           try {
-            await deleteDoc(doc(db, 'users', user.id));
-            await deleteDoc(doc(db, 'clients', user.id));
-          } catch (e: any) {
-            Alert.alert('Error', e.message);
+            await Promise.all([
+              deleteDoc(doc(db, 'users', user.id)),
+              deleteDoc(doc(db, 'clients', user.id)),
+            ]);
+            setActiveOverrides((prev) => {
+              const next = { ...prev };
+              delete next[user.id];
+              return next;
+            });
+            Alert.alert('Success', `${getClientName(user)} has been removed.`);
+          } catch (error) {
+            Alert.alert('Error', getErrorMessage(error, 'Failed to remove user. Please try again.'));
+          } finally {
+            setDeletingUserId(null);
           }
         },
       },
@@ -197,10 +251,23 @@ export default function ManageUsers() {
   };
 
   const handleToggleActive = async (user: MergedUser) => {
+    if (!user.id) {
+      Alert.alert('Error', 'This user record is missing an ID and cannot be updated.');
+      return;
+    }
+
+    if (togglingUserId || deletingUserId === user.id) return;
+
+    const nextActive = user.active === false;
+    setTogglingUserId(user.id);
     try {
-      await updateDoc(doc(db, 'users', user.id), { active: !user.active });
-    } catch (e: any) {
-      Alert.alert('Error', e.message);
+      await updateDoc(doc(db, 'users', user.id), { active: nextActive });
+      setActiveOverrides((prev) => ({ ...prev, [user.id]: nextActive }));
+      Alert.alert('Success', `${getClientName(user)} is now ${nextActive ? 'active' : 'inactive'}.`);
+    } catch (error) {
+      Alert.alert('Error', getErrorMessage(error, 'Failed to update user status. Please try again.'));
+    } finally {
+      setTogglingUserId(null);
     }
   };
 
@@ -614,6 +681,9 @@ export default function ManageUsers() {
             {filtered.map((user, index) => {
               const name = getClientName(user);
               const isEven = index % 2 === 0;
+              const isToggling = togglingUserId === user.id;
+              const isDeleting = deletingUserId === user.id;
+              const isBusy = isToggling || isDeleting;
 
               if (activeTab === 'users') {
                 return (
@@ -640,11 +710,27 @@ export default function ManageUsers() {
                       </View>
                     </View>
                     <View style={[styles.tableCell, { flex: 0.8, gap: 6 }]}>
-                      <Pressable style={styles.actionIconBtn} onPress={() => handleToggleActive(user)}>
-                        <Ionicons name={user.active === false ? 'checkmark-circle-outline' : 'ban-outline'} size={16} color={COLORS.textSecondary} />
+                      <Pressable
+                        style={[styles.actionIconBtn, isToggling && styles.actionIconBtnDisabled]}
+                        onPress={() => handleToggleActive(user)}
+                        disabled={isBusy}
+                      >
+                        {isToggling ? (
+                          <ActivityIndicator size="small" color={COLORS.textSecondary} />
+                        ) : (
+                          <Ionicons name={user.active === false ? 'checkmark-circle-outline' : 'ban-outline'} size={16} color={COLORS.textSecondary} />
+                        )}
                       </Pressable>
-                      <Pressable style={[styles.actionIconBtn, styles.actionIconBtnDanger]} onPress={() => handleDelete(user)}>
-                        <Ionicons name="trash-outline" size={16} color="#ff6b6b" />
+                      <Pressable
+                        style={[styles.actionIconBtn, styles.actionIconBtnDanger, isDeleting && styles.actionIconBtnDisabled]}
+                        onPress={() => handleDelete(user)}
+                        disabled={isBusy}
+                      >
+                        {isDeleting ? (
+                          <ActivityIndicator size="small" color="#ff6b6b" />
+                        ) : (
+                          <Ionicons name="trash-outline" size={16} color="#ff6b6b" />
+                        )}
                       </Pressable>
                     </View>
                   </View>
@@ -652,7 +738,6 @@ export default function ManageUsers() {
               }
 
               if (activeTab === 'progress') {
-                if (!routineLogsMap[user.id] && !skinPhotosMap[user.id]) loadClientDetails(user.id, 'progress');
                 const logs = routineLogsMap[user.id];
                 const allLogs = logs ?? [];
 
@@ -725,7 +810,6 @@ export default function ManageUsers() {
               }
 
               if (activeTab === 'skin') {
-                if (!skinMetricsMap[user.id]) loadClientDetails(user.id, 'skin');
                 const metrics = skinMetricsMap[user.id];
                 const latest = metrics?.[0];
                 return (
@@ -1011,6 +1095,7 @@ const styles = StyleSheet.create({
   tableCell: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: 6 },
   tableCellText: { fontSize: 13, color: COLORS.textPrimary, fontWeight: '500' },
   actionIconBtn: { width: 28, height: 28, borderRadius: 7, backgroundColor: COLORS.background, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center' },
+  actionIconBtnDisabled: { opacity: 0.55 },
   actionIconBtnDanger: { borderColor: 'rgba(255,107,107,0.3)', backgroundColor: 'rgba(255,107,107,0.06)' },
   avatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(27,58,107,0.12)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   avatarText: { fontSize: 13, fontWeight: '800', color: COLORS.primary },

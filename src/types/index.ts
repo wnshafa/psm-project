@@ -37,6 +37,11 @@ export interface Product {
   description: string;
   skinConcern?: string | string[];
   skinType?: string | string[];
+  activeIngredients?: string[];
+  price?: number | string;
+  originalPrice?: number | string;
+  rating?: number | string;
+  reviewCount?: number | string;
 }
 
 export interface SavedProduct {

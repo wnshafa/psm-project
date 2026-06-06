@@ -1,10 +1,11 @@
 import { router } from 'expo-router';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 import React, { useEffect, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS } from '../src/constants/theme';
 import { auth } from '../src/lib/firebase';
+import { canUseCurrentPlatform, getSessionHome, getSessionProfile } from '../src/lib/session';
 
 const SLIDES = [
   {
@@ -32,23 +33,29 @@ export default function OnboardingPage() {
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    if (Platform.OS === 'web') {
-      const unsubscribe = onAuthStateChanged(auth, async (user) => {
-        if (user) {
-          router.replace('/(admin)/homePage');
-        } else {
-          router.replace('/(auth)/login');
-        }
-      });
-      return unsubscribe;
-    }
-
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        router.replace('/(tabs)/homePage');
-      } else {
-        setChecking(false);
+        try {
+          const profile = await getSessionProfile(user);
+          if (profile && canUseCurrentPlatform(profile.role)) {
+            router.replace(getSessionHome(profile.role));
+          } else {
+            await signOut(auth);
+            router.replace('/(auth)/login');
+          }
+        } catch {
+          await signOut(auth);
+          router.replace('/(auth)/login');
+        }
+        return;
       }
+
+      if (Platform.OS === 'web') {
+        router.replace('/(auth)/login');
+        return;
+      }
+
+      setChecking(false);
     });
     return unsubscribe;
   }, []);

@@ -20,6 +20,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { COLORS } from "../../src/constants/theme";
 import { auth, db } from "../../src/lib/firebase";
 
+const SKIN_TYPES = ["Oily", "Dry", "Combination", "Normal", "Sensitive"];
+const SKIN_CONCERNS = ["Acne", "Aging", "Hyperpigmentation", "Dryness", "Sensitivity", "Pores"];
+
 export default function CreateAccount() {
   const { width } = useWindowDimensions();
   const isDesktop = width > 768;
@@ -29,6 +32,10 @@ export default function CreateAccount() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [age, setAge] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [skinType, setSkinType] = useState("");
+  const [skinConcern, setSkinConcern] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
 
@@ -55,19 +62,35 @@ export default function CreateAccount() {
       return;
     }
 
+    if (age.trim() && !/^\d+$/.test(age.trim())) {
+      const msg = "Please enter a valid age.";
+      if (Platform.OS === 'web') setErrorText(msg);
+      else Alert.alert("Error", msg);
+      return;
+    }
+
     setLoading(true);
     try {
       // 2. Create Auth User
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const trimmedName = name.trim();
+      const trimmedEmail = email.trim().toLowerCase();
+      const trimmedAge = age.trim();
+      const trimmedPhone = phoneNumber.trim();
+      const userCredential = await createUserWithEmailAndPassword(auth, trimmedEmail, password);
       const uid = userCredential.user.uid;
 
       // 3. Create Firestore Records
       // We create a doc in 'users' for role-checking and 'clients' for data tracking
       const userData = {
         uid,
-        fullName: name,
-        email,
+        fullName: trimmedName,
+        name: trimmedName,
+        email: trimmedEmail,
         role: 'client',
+        age: trimmedAge,
+        phoneNumber: trimmedPhone,
+        skinType,
+        skinConcern,
         createdAt: Timestamp.now(),
       };
 
@@ -121,6 +144,7 @@ export default function CreateAccount() {
                     placeholderTextColor={COLORS.textSecondary}
                     value={name}
                     onChangeText={setName}
+                    editable={!loading}
                   />
                 </View>
 
@@ -134,7 +158,74 @@ export default function CreateAccount() {
                     onChangeText={setEmail}
                     autoCapitalize="none"
                     keyboardType="email-address"
+                    editable={!loading}
                   />
+                </View>
+
+                <View style={styles.inlineRow}>
+                  <View style={[styles.inputGroup, styles.inlineField]}>
+                    <Text style={styles.label}>Age</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="24"
+                      placeholderTextColor={COLORS.textSecondary}
+                      value={age}
+                      onChangeText={setAge}
+                      keyboardType="numeric"
+                      editable={!loading}
+                    />
+                  </View>
+
+                  <View style={[styles.inputGroup, styles.inlineField]}>
+                    <Text style={styles.label}>Phone Number</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="+60 12-345 6789"
+                      placeholderTextColor={COLORS.textSecondary}
+                      value={phoneNumber}
+                      onChangeText={setPhoneNumber}
+                      keyboardType="phone-pad"
+                      editable={!loading}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Skin Type</Text>
+                  <View style={styles.choiceGrid}>
+                    {SKIN_TYPES.map((option) => {
+                      const selected = skinType === option;
+                      return (
+                        <Pressable
+                          key={option}
+                          style={[styles.choiceChip, selected && styles.choiceChipSelected]}
+                          onPress={() => setSkinType(option)}
+                          disabled={loading}
+                        >
+                          <Text style={[styles.choiceText, selected && styles.choiceTextSelected]}>{option}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Primary Skin Concern</Text>
+                  <View style={styles.choiceGrid}>
+                    {SKIN_CONCERNS.map((option) => {
+                      const selected = skinConcern === option;
+                      return (
+                        <Pressable
+                          key={option}
+                          style={[styles.choiceChip, selected && styles.choiceChipSelected]}
+                          onPress={() => setSkinConcern(option)}
+                          disabled={loading}
+                        >
+                          <Text style={[styles.choiceText, selected && styles.choiceTextSelected]}>{option}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
                 </View>
 
                 <View style={styles.inputGroup}>
@@ -146,6 +237,7 @@ export default function CreateAccount() {
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry
+                    editable={!loading}
                   />
                 </View>
 
@@ -158,6 +250,7 @@ export default function CreateAccount() {
                     value={confirmPassword}
                     onChangeText={setConfirmPassword}
                     secureTextEntry
+                    editable={!loading}
                   />
                 </View>
               </View>
@@ -177,14 +270,11 @@ export default function CreateAccount() {
                 {loading ? <ActivityIndicator color={COLORS.white} /> : <Text style={styles.buttonText}>Register Now</Text>}
               </Pressable>
 
-              <Pressable 
-  onPress={() => router.push("/(auth)/login")} // Change router.back() to router.push()
-  style={styles.link}
->
-  <Text style={styles.linkText}>
-    Already have an account? <Text style={{ color: PRESTIGE_NAVY, fontWeight: '700' }}>Log in</Text>
-  </Text>
-</Pressable>
+              <Pressable onPress={() => router.push("/(auth)/login")} style={styles.link} disabled={loading}>
+                <Text style={styles.linkText}>
+                  Already have an account? <Text style={{ color: PRESTIGE_NAVY, fontWeight: '700' }}>Log in</Text>
+                </Text>
+              </Pressable>
             </View>
           </View>
 
@@ -220,8 +310,15 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 16, color: COLORS.textSecondary, marginBottom: 10 },
   formGrid: { gap: 12 },
   inputGroup: { gap: 6 },
+  inlineRow: { flexDirection: 'row', gap: 10 },
+  inlineField: { flex: 1 },
   label: { color: COLORS.textSecondary, fontSize: 14, fontWeight: "600" },
   input: { borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.inputBackground, borderRadius: 12, padding: 15, color: COLORS.textPrimary },
+  choiceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  choiceChip: { paddingHorizontal: 12, paddingVertical: 9, borderRadius: 20, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.inputBackground },
+  choiceChipSelected: { borderColor: COLORS.primary, backgroundColor: 'rgba(27,58,107,0.1)' },
+  choiceText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
+  choiceTextSelected: { color: COLORS.primary, fontWeight: '800' },
   errorBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(230, 57, 70, 0.1)', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(230, 57, 70, 0.3)', gap: 8 },
   errorLabel: { color: '#e63946', fontSize: 13, fontWeight: '600', flex: 1 },
   button: { marginTop: 15, borderRadius: 12, paddingVertical: 18, alignItems: "center" },

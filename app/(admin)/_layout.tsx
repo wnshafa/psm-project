@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Slot, router, usePathname } from 'expo-router';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -13,7 +12,8 @@ import {
   StyleSheet,
 } from 'react-native';
 import { COLORS, FONT_SIZE, SPACING, BORDER_RADIUS } from '../../src/constants/theme';
-import { auth, db } from '../../src/lib/firebase';
+import { auth } from '../../src/lib/firebase';
+import { canUseCurrentPlatform, getSessionProfile } from '../../src/lib/session';
 
 const SIDEBAR_FULL = 240;
 const SIDEBAR_COLLAPSED = 64;
@@ -52,19 +52,20 @@ export default function AdminLayout() {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
-          const userDoc = await getDoc(doc(db, 'users', user.uid));
-          if (userDoc.exists() && userDoc.data().role === 'admin') {
-            const data = userDoc.data();
+          const profile = await getSessionProfile(user);
+          if (profile?.role === 'admin' && canUseCurrentPlatform(profile.role)) {
             setAdminProfile({
-              fullName: data.fullName || 'Admin',
-              email: user.email || '',
+              fullName: profile.fullName || 'Admin',
+              email: profile.email || user.email || '',
             });
             setIsAdmin(true);
           } else {
+            await signOut(auth);
             setIsAdmin(false);
             router.replace('/(auth)/login');
           }
         } catch {
+          await signOut(auth);
           router.replace('/(auth)/login');
         }
       } else {

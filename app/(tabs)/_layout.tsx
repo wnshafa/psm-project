@@ -1,13 +1,14 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { Badge, Icon, Label, NativeTabs, VectorIcon } from 'expo-router/unstable-native-tabs';
-import { onAuthStateChanged } from 'firebase/auth';
-import { collection, doc, getDoc, onSnapshot, query, setDoc, where } from 'firebase/firestore';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { collection, doc, onSnapshot, query, setDoc, where } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, View } from 'react-native';
 import { COLORS } from '../../src/constants/theme';
 import { clientPath } from '../../src/constants/firestore';
 import { auth, db } from '../../src/lib/firebase';
+import { canUseCurrentPlatform, getSessionProfile } from '../../src/lib/session';
 
 async function registerPushToken(uid: string) {
   if (Platform.OS === 'web') return;
@@ -61,9 +62,8 @@ export default function TabLayout() {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
-          const userDoc = await getDoc(doc(db, 'users', user.uid));
-          const userData = userDoc.data();
-          if (userData?.role === 'client' || !userData?.role) {
+          const profile = await getSessionProfile(user);
+          if (profile?.role === 'client' && canUseCurrentPlatform(profile.role)) {
             setIsClient(true);
             registerPushToken(user.uid);
             // Listen for unread reminders to show badge
@@ -75,11 +75,13 @@ export default function TabLayout() {
               ),
               (snap) => setUnreadCount(snap.size)
             );
-          } else if (userData?.role === 'admin') {
+          } else {
+            await signOut(auth);
             setIsClient(false);
-            router.replace('/(admin)/homePage');
+            router.replace('/(auth)/login');
           }
         } catch {
+          await signOut(auth);
           router.replace('/(auth)/login');
         }
       } else {

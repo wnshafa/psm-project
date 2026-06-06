@@ -39,6 +39,7 @@ export function useClientsWithProfiles(): { clients: ClientProfile[]; loading: b
           email: user?.email || client.email || '',
           pushToken: user?.pushToken || client.pushToken || null,
           role: user?.role,
+          active: user?.active ?? client.active,
           skinType: user?.skinType || client.skinType,
           skinConcern: user?.skinConcern || client.skinConcern,
           age: user?.age || client.age,

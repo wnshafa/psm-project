@@ -1,4 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  updateDoc,
+} from "firebase/firestore";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -14,16 +22,8 @@ import {
   View,
 } from "react-native";
 import Toast from "../../src/components/Toast";
-import {
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  onSnapshot,
-  updateDoc,
-} from "firebase/firestore";
+import { BORDER_RADIUS, COLORS, FONT_SIZE, SPACING } from "../../src/constants/theme";
 import { db } from "../../src/lib/firebase";
-import { COLORS, SPACING, FONT_SIZE, BORDER_RADIUS } from "../../src/constants/theme";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -44,7 +44,8 @@ type ActiveIngredient =
   | "Benzoyl Peroxide"
   | "Hyaluronic Acid"
   | "Peptides"
-  | "SPF";
+  | "SPF"
+  | "None";
 
 interface Product {
   id: string;
@@ -73,7 +74,7 @@ const SKIN_TYPES: SkinType[] = ["Normal", "Dry", "Oily", "Combination", "Sensiti
 const SKIN_CONCERNS: SkinConcern[] = ["Acne", "Aging", "Dryness", "Oiliness", "Sensitivity", "Brightening"];
 const ACTIVE_INGREDIENTS: ActiveIngredient[] = [
   "Retinol", "Vitamin C", "Niacinamide", "AHA", "BHA",
-  "Benzoyl Peroxide", "Hyaluronic Acid", "Peptides", "SPF",
+  "Benzoyl Peroxide", "Hyaluronic Acid", "Peptides", "SPF","None",
 ];
 
 const FILTER_OPTIONS = ["All", ...CATEGORIES];
