@@ -1,0 +1,86 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // ── users ─────────────────────────────────────────────────────────────────
+    // Each user can read/write their own profile. Admins can read all.
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow write: if isOwner(uid);
+    }
+
+    // ── clients ───────────────────────────────────────────────────────────────
+    // Clients read/write their own record. Admins can read and update any.
+    match /clients/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow write: if isOwner(uid) || isAdmin();
+    }
+
+    // ── routines ──────────────────────────────────────────────────────────────
+    // Clients read their own routines. Admins manage all.
+    match /routines/{routineId} {
+      allow read: if isSignedIn() && (
+        resource.data.clientId == request.auth.uid || isAdmin()
+      );
+      allow write: if isAdmin();
+    }
+
+    // ── routineLogs ───────────────────────────────────────────────────────────
+    // Clients read and create their own logs. Admins can read all.
+    match /routineLogs/{logId} {
+      allow read: if isSignedIn() && (
+        resource.data.clientId == request.auth.uid || isAdmin()
+      );
+      allow create: if isSignedIn() &&
+        request.resource.data.clientId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // ── reminder ──────────────────────────────────────────────────────────────
+    // clientID field is stored as the path "/clients/{uid}".
+    // Clients read their own reminders and can mark them read.
+    // Admins create and manage all reminders.
+    match /reminder/{reminderId} {
+      allow read: if isSignedIn() && (
+        resource.data.clientID == '/clients/' + request.auth.uid || isAdmin()
+      );
+      allow update: if isSignedIn() &&
+        resource.data.clientID == '/clients/' + request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+      allow create, delete: if isAdmin();
+    }
+
+    // ── skinLogs ──────────────────────────────────────────────────────────────
+    // Clients read and create their own skin logs. Admins can read all.
+    match /skinLogs/{logId} {
+      allow read: if isSignedIn() && (
+        resource.data.clientId == request.auth.uid || isAdmin()
+      );
+      allow create: if isSignedIn() &&
+        request.resource.data.clientId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // ── products ──────────────────────────────────────────────────────────────
+    // All authenticated users can read. Only admins manage the catalog.
+    match /products/{productId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+}

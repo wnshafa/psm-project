@@ -19,7 +19,6 @@ import { getAllProducts } from '../../src/services/productService';
 import { Product } from '../../src/types';
 
 const CARD_WIDTH = (Dimensions.get('window').width - 40 - 10) / 2;
-
 const CATEGORIES = ['All', 'Wishlist', 'Cleanser', 'Moisturizer', 'Serum', 'Sunscreen', 'Toner'];
 const COMPARE_LIMIT = 3;
 
@@ -31,8 +30,7 @@ const toNumber = (value?: number | string) => {
 
 const formatPrice = (value?: number | string) => {
   const price = toNumber(value);
-  if (price === null) return 'Not listed';
-  return `RM ${price.toFixed(2)}`;
+  return price === null ? 'Not listed' : `RM ${price.toFixed(2)}`;
 };
 
 const formatList = (value?: string | string[]) => {
@@ -65,9 +63,7 @@ export default function ProductsPage() {
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [comparisonVisible, setComparisonVisible] = useState(false);
 
-  useEffect(() => {
-    getAllProducts().then(setProducts);
-  }, []);
+  useEffect(() => { getAllProducts().then(setProducts); }, []);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -88,7 +84,6 @@ export default function ProductsPage() {
     const user = auth.currentUser;
     const isSaved = savedIds.includes(id);
     setSavedIds((prev) => isSaved ? prev.filter((i) => i !== id) : [...prev, id]);
-
     if (!user) return;
     try {
       await setDoc(
@@ -96,122 +91,132 @@ export default function ProductsPage() {
         { wishlistProductIds: isSaved ? arrayRemove(id) : arrayUnion(id) },
         { merge: true }
       );
-    } catch (error) {
+    } catch {
       setSavedIds((prev) => isSaved ? [...prev, id] : prev.filter((i) => i !== id));
-      console.warn('Failed to update wishlist:', error);
     }
   };
 
   const toggleCompare = (id: string) => {
     setCompareIds((prev) => {
-      if (prev.includes(id)) return prev.filter((item) => item !== id);
+      if (prev.includes(id)) return prev.filter((i) => i !== id);
       if (prev.length >= COMPARE_LIMIT) return prev;
       return [...prev, id];
     });
   };
 
-  const recommendedProducts = useMemo(() => {
-    if (!userSkinType) return [];
-    return products.filter((p) => {
-      if (!p.skinType || !p.skinConcern) return false;
+  const recommendedIds = useMemo(() => {
+    if (!userSkinType) return new Set<string>();
+    const ids = new Set<string>();
+    products.forEach((p) => {
+      if (!p.skinType || !p.skinConcern) return;
       const pTypes = Array.isArray(p.skinType) ? p.skinType : [p.skinType];
       const pConcerns = Array.isArray(p.skinConcern) ? p.skinConcern : [p.skinConcern];
       const uTypes = Array.isArray(userSkinType) ? userSkinType : [userSkinType];
-      const uConcerns = userSkinConcern.length > 0 ? userSkinConcern : [];
       const matchType = pTypes.some((t) => t && uTypes.map(x => x.toLowerCase()).includes(t.toLowerCase()));
-      const matchConcern = uConcerns.length === 0 || pConcerns.some((c) => c && uConcerns.map(x => x.toLowerCase()).includes(c.toLowerCase()));
-      return matchType && matchConcern;
+      const matchConcern = userSkinConcern.length === 0 ||
+        pConcerns.some((c) => c && userSkinConcern.map(x => x.toLowerCase()).includes(c.toLowerCase()));
+      if (matchType && matchConcern) ids.add(p.id);
     });
+    return ids;
   }, [products, userSkinType, userSkinConcern]);
-
-  const wishlistProducts = useMemo(
-    () => products.filter((product) => savedIds.includes(product.id)),
-    [products, savedIds]
-  );
 
   const filteredProducts = useMemo(() => {
     let list = selectedCategory === 'Wishlist'
-      ? wishlistProducts
+      ? products.filter((p) => savedIds.includes(p.id))
       : selectedCategory === 'All'
       ? products
       : products.filter((p) => p.category?.toLowerCase() === selectedCategory.toLowerCase());
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       list = list.filter((p) =>
-        p.name?.toLowerCase().includes(q) || p.description?.toLowerCase().includes(q) || p.category?.toLowerCase().includes(q)
+        p.name?.toLowerCase().includes(q) ||
+        p.description?.toLowerCase().includes(q) ||
+        p.category?.toLowerCase().includes(q)
       );
     }
     return list;
-  }, [products, selectedCategory, searchQuery, wishlistProducts]);
+  }, [products, selectedCategory, searchQuery, savedIds]);
 
   const comparisonProducts = useMemo(
-    () => compareIds.map((id) => products.find((product) => product.id === id)).filter(Boolean) as Product[],
+    () => compareIds.map((id) => products.find((p) => p.id === id)).filter(Boolean) as Product[],
     [compareIds, products]
   );
 
   const renderProductCard = (item: Product) => {
     const saved = savedIds.includes(item.id);
-    const selectedForCompare = compareIds.includes(item.id);
-    const priceDropped = hasPriceDrop(item);
+    const selected = compareIds.includes(item.id);
+    const recommended = recommendedIds.has(item.id);
+    const priceDrop = hasPriceDrop(item);
 
     return (
-      <View style={[styles.productCard, selectedForCompare && styles.productCardSelected]}>
-        <View style={styles.productTopRow}>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <View style={styles.categoryPill}>
-              <Text style={styles.categoryPillText}>{item.category || 'Product'}</Text>
-            </View>
+      <View style={[styles.card, selected && styles.cardSelected]}>
+        {/* Top row */}
+        <View style={styles.cardTop}>
+          <View style={styles.categoryPill}>
+            <Text style={styles.categoryPillText}>{item.category || 'Product'}</Text>
           </View>
-          <Pressable onPress={() => toggleSave(item.id)} hitSlop={8} style={styles.iconBtn}>
+          <Pressable onPress={() => toggleSave(item.id)} hitSlop={10}>
             <Ionicons
               name={saved ? 'bookmark' : 'bookmark-outline'}
-              size={20}
+              size={18}
               color={saved ? COLORS.primary : COLORS.textSecondary}
             />
           </Pressable>
         </View>
 
-        <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
-        <Text style={styles.productDesc} numberOfLines={2}>{item.description || 'No description added.'}</Text>
+        {/* Name */}
+        <Text style={styles.cardName} numberOfLines={2}>{item.name}</Text>
 
-        <View style={styles.productMetaRow}>
-          <Text style={styles.productPrice}>{formatPrice(item.price)}</Text>
-          {priceDropped && (
-            <View style={styles.dropPill}>
-              <Ionicons name="trending-down" size={11} color="#0a7f43" />
-              <Text style={styles.dropText}>Price drop</Text>
+        {/* Price + tags */}
+        <View style={styles.cardMeta}>
+          <Text style={styles.cardPrice}>{formatPrice(item.price)}</Text>
+          {recommended && (
+            <View style={styles.forYouPill}>
+              <Text style={styles.forYouText}>For you</Text>
+            </View>
+          )}
+          {priceDrop && !recommended && (
+            <View style={styles.salePill}>
+              <Text style={styles.saleText}>Sale</Text>
             </View>
           )}
         </View>
 
+        {/* Compare toggle */}
         <Pressable
-          style={[styles.compareToggle, selectedForCompare && styles.compareToggleActive]}
+          style={[styles.compareBtn, selected && styles.compareBtnActive]}
           onPress={() => toggleCompare(item.id)}
-          disabled={!selectedForCompare && compareIds.length >= COMPARE_LIMIT}
+          disabled={!selected && compareIds.length >= COMPARE_LIMIT}
         >
           <Ionicons
-            name={selectedForCompare ? 'checkmark-circle' : 'git-compare-outline'}
-            size={14}
-            color={selectedForCompare ? COLORS.white : COLORS.primary}
+            name={selected ? 'checkmark-circle' : 'git-compare-outline'}
+            size={13}
+            color={selected ? '#fff' : COLORS.primary}
           />
-          <Text style={[styles.compareToggleText, selectedForCompare && styles.compareToggleTextActive]}>
-            {selectedForCompare ? 'Selected' : 'Compare'}
+          <Text style={[styles.compareBtnText, selected && styles.compareBtnTextActive]}>
+            {selected ? 'Selected' : 'Compare'}
           </Text>
         </Pressable>
       </View>
     );
   };
 
+  const listLabel = searchQuery
+    ? `"${searchQuery}"`
+    : selectedCategory === 'All' ? 'All Products' : selectedCategory;
+
   return (
     <SafeAreaView style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-
-        {/* ── Header ── */}
+      <ScrollView
+        contentContainerStyle={[styles.scroll, compareIds.length > 0 && { paddingBottom: 88 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
         <Text style={styles.headerTitle}>Products</Text>
 
-        {/* ── Search ── */}
+        {/* Search */}
         <View style={styles.searchBar}>
-          <Ionicons name="search-outline" size={18} color={COLORS.textSecondary} />
+          <Ionicons name="search-outline" size={17} color={COLORS.textSecondary} />
           <TextInput
             style={styles.searchInput}
             placeholder="Search products..."
@@ -220,157 +225,94 @@ export default function ProductsPage() {
             onChangeText={setSearchQuery}
           />
           {searchQuery.length > 0 && (
-            <Pressable onPress={() => setSearchQuery('')}>
-              <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
+            <Pressable onPress={() => setSearchQuery('')} hitSlop={8}>
+              <Ionicons name="close-circle" size={17} color={COLORS.textSecondary} />
             </Pressable>
           )}
         </View>
 
-        {/* ── Category Chips ── */}
+        {/* Category chips */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-          {CATEGORIES.map((cat) => (
-            <Pressable
-              key={cat}
-              onPress={() => setSelectedCategory(cat)}
-              style={[styles.chip, selectedCategory === cat && styles.chipActive]}
-            >
-              <Text style={[styles.chipText, selectedCategory === cat && styles.chipTextActive]}>
-                {cat}
-              </Text>
-            </Pressable>
-          ))}
+          {CATEGORIES.map((cat) => {
+            const label = cat === 'Wishlist' && savedIds.length > 0
+              ? `Wishlist (${savedIds.length})`
+              : cat;
+            return (
+              <Pressable
+                key={cat}
+                onPress={() => setSelectedCategory(cat)}
+                style={[styles.chip, selectedCategory === cat && styles.chipActive]}
+              >
+                <Text style={[styles.chipText, selectedCategory === cat && styles.chipTextActive]}>
+                  {label}
+                </Text>
+              </Pressable>
+            );
+          })}
         </ScrollView>
 
-        {/* ── Quick Actions ── */}
-        <View style={styles.actionsBar}>
-          <Pressable style={styles.actionItem} onPress={() => setSelectedCategory('Wishlist')}>
-            <View style={[styles.actionIconWrap, savedIds.length > 0 && styles.actionIconActive]}>
-              <Ionicons name="bookmark" size={16} color={savedIds.length > 0 ? COLORS.primary : COLORS.textSecondary} />
-            </View>
-            <View>
-              <Text style={styles.actionLabel}>Wishlist</Text>
-              <Text style={[styles.actionMeta, savedIds.length > 0 && styles.actionMetaActive]}>{savedIds.length} saved</Text>
-            </View>
-          </Pressable>
-          <View style={styles.actionDivider} />
-          <Pressable
-            style={styles.actionItem}
-            onPress={() => setComparisonVisible(true)}
-            disabled={compareIds.length < 2}
-          >
-            <View style={[styles.actionIconWrap, compareIds.length >= 2 && styles.actionIconActive]}>
-              <Ionicons name="git-compare-outline" size={16} color={compareIds.length >= 2 ? COLORS.primary : COLORS.textSecondary} />
-            </View>
-            <View>
-              <Text style={styles.actionLabel}>Compare</Text>
-              <Text style={[styles.actionMeta, compareIds.length >= 2 && styles.actionMetaActive]}>
-                {compareIds.length > 0 ? `${compareIds.length} selected` : 'Select items'}
-              </Text>
-            </View>
-          </Pressable>
+        {/* List header */}
+        <View style={styles.listHeader}>
+          <Text style={styles.listLabel}>{listLabel}</Text>
+          <Text style={styles.listCount}>{filteredProducts.length}</Text>
         </View>
 
-        {wishlistProducts.length > 0 && selectedCategory !== 'Wishlist' && !searchQuery && (
-          <View>
-            <Text style={styles.sectionTitle}>Wishlist</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recommendedList}>
-              {wishlistProducts.map((p) => (
-                <View key={p.id} style={styles.wishlistCard}>
-                  <View style={styles.recommendedTop}>
-                    <Text style={styles.wishlistName} numberOfLines={2}>{p.name}</Text>
-                    <Pressable onPress={() => toggleSave(p.id)} hitSlop={8}>
-                      <Ionicons name="bookmark" size={18} color={COLORS.primary} />
-                    </Pressable>
-                  </View>
-                  <Text style={styles.wishlistMeta}>{formatPrice(p.price)}</Text>
-                  {hasPriceDrop(p) ? (
-                    <View style={styles.dropPill}>
-                      <Ionicons name="trending-down" size={11} color="#0a7f43" />
-                      <Text style={styles.dropText}>Price drop</Text>
-                    </View>
-                  ) : (
-                    <Text style={styles.wishlistHint}>Track for later</Text>
-                  )}
-                </View>
-              ))}
-            </ScrollView>
+        {/* Grid */}
+        {filteredProducts.length === 0 ? (
+          <View style={styles.empty}>
+            <Ionicons name="search-outline" size={34} color={COLORS.border} />
+            <Text style={styles.emptyText}>No products found</Text>
           </View>
+        ) : (
+          <FlatList
+            key="two-col"
+            data={filteredProducts}
+            keyExtractor={(item) => item.id}
+            numColumns={2}
+            scrollEnabled={false}
+            columnWrapperStyle={styles.gridRow}
+            renderItem={({ item }) => (
+              <View style={styles.gridItem}>{renderProductCard(item)}</View>
+            )}
+          />
         )}
-
-        {/* ── Recommended ── */}
-        {recommendedProducts.length > 0 && !searchQuery && (
-          <View>
-            <Text style={styles.sectionTitle}>Recommended for you</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recommendedList}>
-              {recommendedProducts.map((p) => (
-                <View key={p.id} style={styles.recommendedCard}>
-                  <View style={styles.recommendedTop}>
-                    <View style={styles.categoryPill}>
-                      <Text style={styles.categoryPillText}>{p.category || 'Product'}</Text>
-                    </View>
-                    <Pressable onPress={() => toggleSave(p.id)} hitSlop={8}>
-                      <Ionicons
-                        name={savedIds.includes(p.id) ? 'bookmark' : 'bookmark-outline'}
-                        size={18}
-                        color={savedIds.includes(p.id) ? COLORS.primary : COLORS.textSecondary}
-                      />
-                    </Pressable>
-                  </View>
-                  <Text style={styles.recommendedName} numberOfLines={2}>{p.name}</Text>
-                    <Text style={styles.recommendedDesc} numberOfLines={2}>{p.description}</Text>
-                  <Text style={styles.recommendedPrice}>{formatPrice(p.price)}</Text>
-                  {hasPriceDrop(p) && (
-                    <View style={styles.dropPill}>
-                      <Ionicons name="trending-down" size={11} color="#0a7f43" />
-                      <Text style={styles.dropText}>Price drop</Text>
-                    </View>
-                  )}
-                </View>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
-        {/* ── All Products ── */}
-        <View>
-          <Text style={styles.sectionTitle}>
-            {searchQuery ? `Results for "${searchQuery}"` : selectedCategory === 'All' ? 'All Products' : selectedCategory}
-            <Text style={styles.countText}> ({filteredProducts.length})</Text>
-          </Text>
-
-          {filteredProducts.length === 0 ? (
-            <View style={styles.empty}>
-              <Ionicons name="search-outline" size={36} color={COLORS.border} />
-              <Text style={styles.emptyText}>No products found</Text>
-            </View>
-          ) : (
-            <FlatList
-              key="two-col"
-              data={filteredProducts}
-              keyExtractor={(item) => item.id}
-              numColumns={2}
-              scrollEnabled={false}
-              columnWrapperStyle={styles.gridRow}
-              renderItem={({ item }) => (
-                <View style={styles.gridItem}>
-                  {renderProductCard(item)}
-                </View>
-              )}
-            />
-          )}
-        </View>
-
       </ScrollView>
 
-      <Modal visible={comparisonVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setComparisonVisible(false)}>
+      {/* Floating compare bar */}
+      {compareIds.length > 0 && (
+        <View style={styles.compareBar}>
+          <Text style={styles.compareBarLabel}>{compareIds.length} selected</Text>
+          <View style={styles.compareBarActions}>
+            <Pressable style={styles.clearBtn} onPress={() => setCompareIds([])}>
+              <Text style={styles.clearBtnText}>Clear</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.compareBarBtn, compareIds.length < 2 && styles.compareBarBtnOff]}
+              onPress={() => compareIds.length >= 2 && setComparisonVisible(true)}
+              disabled={compareIds.length < 2}
+            >
+              <Ionicons name="git-compare-outline" size={14} color="#fff" />
+              <Text style={styles.compareBarBtnText}>Compare</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
+      {/* Comparison modal */}
+      <Modal
+        visible={comparisonVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setComparisonVisible(false)}
+      >
         <SafeAreaView style={styles.modalScreen}>
           <View style={styles.modalHeader}>
             <View>
               <Text style={styles.modalTitle}>Comparison</Text>
-              <Text style={styles.modalSubtitle}>Ingredients, prices, reviews</Text>
+              <Text style={styles.modalSubtitle}>Ingredients · Prices · Reviews</Text>
             </View>
             <Pressable onPress={() => setComparisonVisible(false)} style={styles.closeBtn}>
-              <Ionicons name="close" size={22} color={COLORS.textPrimary} />
+              <Ionicons name="close" size={20} color={COLORS.textPrimary} />
             </Pressable>
           </View>
 
@@ -385,32 +327,31 @@ export default function ProductsPage() {
                 <View style={styles.compareBlock}>
                   <Text style={styles.compareLabel}>Price</Text>
                   <Text style={styles.compareValue}>{formatPrice(product.price)}</Text>
-                  {hasPriceDrop(product) && <Text style={styles.comparePositive}>Dropped from {formatPrice(product.originalPrice)}</Text>}
+                  {hasPriceDrop(product) && (
+                    <Text style={styles.comparePositive}>↓ from {formatPrice(product.originalPrice)}</Text>
+                  )}
                 </View>
-
                 <View style={styles.compareBlock}>
                   <Text style={styles.compareLabel}>Ingredients</Text>
-                  <Text style={styles.compareValue}>{product.activeIngredients?.length ? product.activeIngredients.join(', ') : 'Not listed'}</Text>
+                  <Text style={styles.compareValue}>
+                    {product.activeIngredients?.length ? product.activeIngredients.join(', ') : 'Not listed'}
+                  </Text>
                 </View>
-
                 <View style={styles.compareBlock}>
                   <Text style={styles.compareLabel}>Reviews</Text>
                   <Text style={styles.compareValue}>{getReviewLabel(product)}</Text>
                 </View>
-
                 <View style={styles.compareBlock}>
                   <Text style={styles.compareLabel}>Best for</Text>
                   <Text style={styles.compareValue}>{formatList(product.skinType)}</Text>
                 </View>
-
                 <View style={styles.compareBlock}>
                   <Text style={styles.compareLabel}>Concerns</Text>
                   <Text style={styles.compareValue}>{formatList(product.skinConcern)}</Text>
                 </View>
 
-                <Pressable style={styles.removeCompareBtn} onPress={() => toggleCompare(product.id)}>
-                  <Ionicons name="remove-circle-outline" size={15} color="#ff6b6b" />
-                  <Text style={styles.removeCompareText}>Remove</Text>
+                <Pressable style={styles.removeBtn} onPress={() => toggleCompare(product.id)}>
+                  <Text style={styles.removeBtnText}>Remove</Text>
                 </Pressable>
               </View>
             ))}
@@ -423,85 +364,134 @@ export default function ProductsPage() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.background },
-  scroll: { padding: 20, gap: 10, paddingBottom: 40 },
+  scroll: { padding: 20, paddingBottom: 40, gap: 12 },
 
-  headerTitle: { fontSize: 28, fontWeight: '800', color: COLORS.textPrimary },
+  headerTitle: { fontSize: 26, fontWeight: '800', color: COLORS.textPrimary },
 
   // Search
-  searchBar: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.card, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1, borderColor: COLORS.border },
-  searchInput: { flex: 1, fontSize: 15, color: COLORS.textPrimary },
+  searchBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: COLORS.card, borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 11,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  searchInput: { flex: 1, fontSize: 14, color: COLORS.textPrimary },
 
   // Chips
-  chips: { gap: 8, paddingRight: 4 },
-  chip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
+  chips: { gap: 7, paddingRight: 4 },
+  chip: {
+    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20,
+    backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border,
+  },
   chipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   chipText: { fontSize: 13, color: COLORS.textSecondary, fontWeight: '600' },
   chipTextActive: { color: '#fff' },
 
-  // Quick actions bar
-  actionsBar: { flexDirection: 'row', backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
-  actionItem: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14 },
-  actionIconWrap: { width: 34, height: 34, borderRadius: 10, backgroundColor: COLORS.inputBackground, alignItems: 'center', justifyContent: 'center' },
-  actionIconActive: { backgroundColor: 'rgba(27,58,107,0.1)' },
-  actionLabel: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary },
-  actionMeta: { fontSize: 11, color: COLORS.textSecondary, fontWeight: '500', marginTop: 1 },
-  actionMetaActive: { color: COLORS.primary, fontWeight: '700' },
-  actionDivider: { width: 1, backgroundColor: COLORS.border, marginVertical: 12 },
-
-  // Section
-  sectionTitle: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 10, letterSpacing: 0.1 },
-  countText: { fontSize: 13, fontWeight: '500', color: COLORS.textSecondary },
-
-  // Recommended horizontal cards
-  recommendedList: { gap: 12, paddingRight: 4, paddingBottom: 4 },
-  recommendedCard: { width: 160, backgroundColor: COLORS.card, borderRadius: 14, padding: 12, borderWidth: 1, borderColor: COLORS.border, gap: 6 },
-  recommendedTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  categoryPill: { backgroundColor: 'rgba(27,58,107,0.08)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-  categoryPillText: { fontSize: 10, fontWeight: '700', color: COLORS.primary, textTransform: 'capitalize' },
-  recommendedName: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary },
-  recommendedDesc: { fontSize: 11, color: COLORS.textSecondary, lineHeight: 16 },
-  recommendedPrice: { fontSize: 12, fontWeight: '800', color: COLORS.textPrimary },
-
-  wishlistCard: { width: 170, backgroundColor: COLORS.card, borderRadius: 14, padding: 12, borderWidth: 1, borderColor: COLORS.border, gap: 7 },
-  wishlistName: { flex: 1, fontSize: 13, fontWeight: '800', color: COLORS.textPrimary, paddingRight: 8 },
-  wishlistMeta: { fontSize: 12, fontWeight: '800', color: COLORS.textPrimary },
-  wishlistHint: { fontSize: 11, fontWeight: '600', color: COLORS.textSecondary },
-  dropPill: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(10,127,67,0.1)', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 3 },
-  dropText: { fontSize: 10, fontWeight: '800', color: '#0a7f43' },
+  // List header
+  listHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  listLabel: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary },
+  listCount: {
+    fontSize: 12, fontWeight: '700', color: COLORS.textSecondary,
+    backgroundColor: COLORS.inputBackground, paddingHorizontal: 8,
+    paddingVertical: 3, borderRadius: 10,
+  },
 
   // Grid
-  gridRow: { gap: 12 },
+  gridRow: { gap: 10 },
   gridItem: { width: CARD_WIDTH },
-  productCard: { minHeight: 185, backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, padding: 14, marginBottom: 12, gap: 8 },
-  productCardSelected: { borderColor: COLORS.primary, backgroundColor: 'rgba(27,58,107,0.05)' },
-  productTopRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
-  iconBtn: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
-  productName: { fontSize: 15, fontWeight: '800', color: COLORS.textPrimary, lineHeight: 19 },
-  productDesc: { fontSize: 12, color: COLORS.textSecondary, lineHeight: 17, minHeight: 34 },
-  productMetaRow: { minHeight: 24, flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  productPrice: { fontSize: 13, fontWeight: '800', color: COLORS.textPrimary },
-  compareToggle: { marginTop: 'auto', minHeight: 32, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 8 },
-  compareToggleActive: { backgroundColor: COLORS.primary },
-  compareToggleText: { fontSize: 12, fontWeight: '800', color: COLORS.primary },
-  compareToggleTextActive: { color: COLORS.white },
+
+  // Product card
+  card: {
+    backgroundColor: COLORS.card, borderRadius: 14,
+    borderWidth: 1, borderColor: COLORS.border,
+    padding: 12, marginBottom: 10, gap: 7,
+  },
+  cardSelected: { borderColor: COLORS.primary, backgroundColor: 'rgba(27,58,107,0.04)' },
+  cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  categoryPill: {
+    backgroundColor: 'rgba(27,58,107,0.08)', paddingHorizontal: 8,
+    paddingVertical: 3, borderRadius: 8,
+  },
+  categoryPillText: { fontSize: 10, fontWeight: '700', color: COLORS.primary, textTransform: 'capitalize' },
+  cardName: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary, lineHeight: 19 },
+  cardMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  cardPrice: { fontSize: 12, fontWeight: '800', color: COLORS.textPrimary },
+  forYouPill: {
+    backgroundColor: 'rgba(27,58,107,0.1)', paddingHorizontal: 6,
+    paddingVertical: 2, borderRadius: 6,
+  },
+  forYouText: { fontSize: 9, fontWeight: '800', color: COLORS.primary },
+  salePill: {
+    backgroundColor: 'rgba(10,127,67,0.1)', paddingHorizontal: 6,
+    paddingVertical: 2, borderRadius: 6,
+  },
+  saleText: { fontSize: 9, fontWeight: '800', color: '#0a7f43' },
+  compareBtn: {
+    minHeight: 30, borderRadius: 9, borderWidth: 1, borderColor: COLORS.primary,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+  },
+  compareBtnActive: { backgroundColor: COLORS.primary },
+  compareBtnText: { fontSize: 11, fontWeight: '700', color: COLORS.primary },
+  compareBtnTextActive: { color: '#fff' },
+
+  // Floating compare bar
+  compareBar: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: COLORS.card, paddingHorizontal: 20, paddingVertical: 14,
+    borderTopWidth: 1, borderTopColor: COLORS.border,
+    shadowColor: '#000', shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.06, shadowRadius: 8, elevation: 10,
+  },
+  compareBarLabel: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary },
+  compareBarActions: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  clearBtn: {
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10,
+    backgroundColor: COLORS.inputBackground,
+  },
+  clearBtnText: { fontSize: 12, fontWeight: '700', color: COLORS.textSecondary },
+  compareBarBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 16, paddingVertical: 9, borderRadius: 10,
+    backgroundColor: COLORS.primary,
+  },
+  compareBarBtnOff: { opacity: 0.4 },
+  compareBarBtnText: { fontSize: 12, fontWeight: '700', color: '#fff' },
 
   // Comparison modal
   modalScreen: { flex: 1, backgroundColor: COLORS.background },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  modalTitle: { fontSize: 22, fontWeight: '800', color: COLORS.textPrimary },
-  modalSubtitle: { fontSize: 12, color: COLORS.textSecondary, fontWeight: '600', marginTop: 2 },
-  closeBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
+  modalHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 20, paddingVertical: 16,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+  },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: COLORS.textPrimary },
+  modalSubtitle: { fontSize: 11, color: COLORS.textSecondary, fontWeight: '500', marginTop: 2 },
+  closeBtn: {
+    width: 34, height: 34, borderRadius: 17,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: COLORS.inputBackground,
+  },
   compareColumns: { padding: 20, gap: 12 },
-  compareCard: { width: 230, backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, padding: 14, gap: 12 },
-  compareName: { fontSize: 16, fontWeight: '800', color: COLORS.textPrimary, lineHeight: 21 },
-  compareBlock: { gap: 3, borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 10 },
-  compareLabel: { fontSize: 10, fontWeight: '800', color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.3 },
-  compareValue: { fontSize: 13, fontWeight: '600', color: COLORS.textPrimary, lineHeight: 18 },
-  comparePositive: { fontSize: 11, color: '#0a7f43', fontWeight: '800' },
-  removeCompareBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, minHeight: 34, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(255,107,107,0.25)', backgroundColor: 'rgba(255,107,107,0.06)' },
-  removeCompareText: { color: '#ff6b6b', fontSize: 12, fontWeight: '800' },
+  compareCard: {
+    width: 220, backgroundColor: COLORS.card, borderRadius: 14,
+    borderWidth: 1, borderColor: COLORS.border, padding: 14, gap: 10,
+  },
+  compareName: { fontSize: 15, fontWeight: '800', color: COLORS.textPrimary, lineHeight: 20 },
+  compareBlock: { gap: 3, borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 9 },
+  compareLabel: {
+    fontSize: 10, fontWeight: '800', color: COLORS.textSecondary,
+    textTransform: 'uppercase', letterSpacing: 0.3,
+  },
+  compareValue: { fontSize: 12, fontWeight: '600', color: COLORS.textPrimary, lineHeight: 17 },
+  comparePositive: { fontSize: 11, color: '#0a7f43', fontWeight: '700' },
+  removeBtn: {
+    alignItems: 'center', justifyContent: 'center', minHeight: 32,
+    borderRadius: 9, borderWidth: 1, borderColor: 'rgba(255,107,107,0.3)',
+  },
+  removeBtnText: { fontSize: 12, fontWeight: '700', color: '#ff6b6b' },
 
   // Empty
-  empty: { alignItems: 'center', paddingVertical: 40, gap: 10 },
-  emptyText: { fontSize: 14, color: COLORS.textSecondary },
+  empty: { alignItems: 'center', paddingVertical: 48, gap: 10 },
+  emptyText: { fontSize: 13, color: COLORS.textSecondary },
 });
