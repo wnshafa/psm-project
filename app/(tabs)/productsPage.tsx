@@ -208,7 +208,8 @@ export default function ProductsPage() {
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView
-        contentContainerStyle={[styles.scroll, compareIds.length > 0 && { paddingBottom: 88 }]}
+        style={styles.scrollView}
+        contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
         {/* Header */}
@@ -434,9 +435,10 @@ const styles = StyleSheet.create({
   compareBtnText: { fontSize: 11, fontWeight: '700', color: COLORS.primary },
   compareBtnTextActive: { color: '#fff' },
 
-  // Floating compare bar
+  scrollView: { flex: 1 },
+
+  // Compare bar — normal flex child so it sits above the tab bar
   compareBar: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     backgroundColor: COLORS.card, paddingHorizontal: 20, paddingVertical: 14,
     borderTopWidth: 1, borderTopColor: COLORS.border,
