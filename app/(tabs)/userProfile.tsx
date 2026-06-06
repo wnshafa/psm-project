@@ -1,12 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { collection, doc, onSnapshot, orderBy, query, setDoc, Timestamp, where } from "firebase/firestore";
+import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -18,7 +21,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { COLORS } from "../../src/constants/theme";
 import { SKIN_METRICS } from '../../src/constants/metrics';
-import { auth, db } from "../../src/lib/firebase";
+import { auth, db, storage } from "../../src/lib/firebase";
 
 const SKIN_TYPES = ["Oily", "Dry", "Combination", "Normal", "Sensitive"];
 const SKIN_CONCERNS = ["Acne", "Aging", "Hyperpigmentation", "Dryness", "Sensitivity", "Pores"];
@@ -47,6 +50,8 @@ export default function UserProfile() {
   const [totalCompleted, setTotalCompleted] = useState(0);
   const [skinType, setSkinType] = useState("");
   const [skinConcern, setSkinConcern] = useState("");
+  const [photoURL, setPhotoURL] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   // Edit form state
   const [editName, setEditName] = useState("");
@@ -92,6 +97,7 @@ export default function UserProfile() {
           setEditSkinConcern(d.skinConcern || "");
           setStreak(d.streak || 0);
           setTotalCompleted(d.totalCompleted || 0);
+          setPhotoURL(d.photoURL || null);
         }
       });
 
@@ -123,6 +129,47 @@ export default function UserProfile() {
       unsubSkin?.();
     };
   }, []);
+
+  const handlePickPhoto = () => {
+    Alert.alert("Profile Photo", "Choose a photo source", [
+      {
+        text: "Camera", onPress: async () => {
+          const { status } = await ImagePicker.requestCameraPermissionsAsync();
+          if (status !== "granted") { Alert.alert("Permission needed", "Camera access is required."); return; }
+          const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, aspect: [1, 1], quality: 0.7 });
+          if (!result.canceled) await uploadPhoto(result.assets[0].uri);
+        }
+      },
+      {
+        text: "Photo Library", onPress: async () => {
+          const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          if (status !== "granted") { Alert.alert("Permission needed", "Photo library access is required."); return; }
+          const result = await ImagePicker.launchImageLibraryAsync({ allowsEditing: true, aspect: [1, 1], quality: 0.7 });
+          if (!result.canceled) await uploadPhoto(result.assets[0].uri);
+        }
+      },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  };
+
+  const uploadPhoto = async (uri: string) => {
+    const user = auth.currentUser;
+    if (!user) return;
+    setUploadingPhoto(true);
+    try {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      const storageRef = ref(storage, `profilePictures/${user.uid}/avatar.jpg`);
+      await uploadBytes(storageRef, blob);
+      const url = await getDownloadURL(storageRef);
+      await setDoc(doc(db, "clients", user.uid), { photoURL: url }, { merge: true });
+      setPhotoURL(url);
+    } catch (e: any) {
+      Alert.alert("Upload failed", e.message);
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
 
   const openEditModal = () => {
     setEditName(fullName);
@@ -207,9 +254,22 @@ export default function UserProfile() {
 
         {/* Avatar Card */}
         <View style={styles.avatarCard}>
-          <View style={styles.avatarCircle}>
-            <Text style={styles.avatarText}>{(fullName || email).charAt(0).toUpperCase()}</Text>
-          </View>
+          <Pressable style={styles.avatarWrapper} onPress={handlePickPhoto} disabled={uploadingPhoto}>
+            <View style={styles.avatarCircle}>
+              {uploadingPhoto ? (
+                <ActivityIndicator size="large" color="#fff" />
+              ) : photoURL ? (
+                <Image source={{ uri: photoURL }} style={styles.avatarImage} />
+              ) : (
+                <Text style={styles.avatarText}>{(fullName || email).charAt(0).toUpperCase()}</Text>
+              )}
+            </View>
+            {!uploadingPhoto && (
+              <View style={styles.cameraBadge}>
+                <Ionicons name="camera" size={13} color="#fff" />
+              </View>
+            )}
+          </Pressable>
           <Text style={styles.nameText}>{fullName || "User"}</Text>
           <Text style={styles.emailText}>{email}</Text>
 
@@ -364,8 +424,11 @@ const styles = StyleSheet.create({
 
   // Avatar Card
   avatarCard: { backgroundColor: COLORS.card, borderRadius: 20, padding: 24, alignItems: 'center', gap: 8, borderWidth: 1, borderColor: COLORS.border },
-  avatarCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  avatarWrapper: { position: 'relative', marginBottom: 4 },
+  avatarCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  avatarImage: { width: 80, height: 80, borderRadius: 40 },
   avatarText: { color: '#fff', fontSize: 32, fontWeight: '800' },
+  cameraBadge: { position: 'absolute', bottom: 0, right: 0, width: 24, height: 24, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: COLORS.card },
   nameText: { fontSize: 20, fontWeight: '800', color: COLORS.textPrimary },
   emailText: { fontSize: 13, color: COLORS.textSecondary },
   pillsRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginTop: 4 },
