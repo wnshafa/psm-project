@@ -273,35 +273,66 @@ export default function ClientDashboard() {
 
         {/* ── Weekly Progress ── */}
         {(() => {
-          const chartWidth = Dimensions.get('window').width - 72;
+          const chartWidth = Dimensions.get('window').width - 64;
+          const today = new Date();
           const weekLabels = Array.from({ length: 7 }, (_, i) => {
             const d = new Date();
-            d.setDate(d.getDate() - (6 - i));
+            d.setDate(today.getDate() - (6 - i));
             return ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'][d.getDay()];
           });
+          const startDay = new Date();
+          startDay.setDate(today.getDate() - 6);
+          const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          const weekRange = `${fmt(startDay)} – ${fmt(today)}`;
+          const weekTotal = weeklyData.reduce((a, b) => a + b, 0);
+          const hasData = weekTotal > 0;
+          const chartData = hasData ? weeklyData : [0, 0, 0, 0, 0, 0, 0.01];
+
           return (
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>Weekly Progress</Text>
+              <View style={styles.weeklyHeader}>
+                <View>
+                  <Text style={styles.cardTitle}>Weekly Progress</Text>
+                  <Text style={styles.weekRange}>{weekRange}</Text>
+                </View>
+                <View style={styles.weeklyBadge}>
+                  <Text style={styles.weeklyBadgeNum}>{weekTotal}</Text>
+                  <Text style={styles.weeklyBadgeLabel}>routines</Text>
+                </View>
+              </View>
               <LineChart
-                data={{ labels: weekLabels, datasets: [{ data: weeklyData }] }}
+                data={{ labels: weekLabels, datasets: [{ data: chartData, strokeWidth: 2.5 }] }}
                 width={chartWidth}
-                height={140}
+                height={160}
                 fromZero
+                yAxisInterval={1}
                 chartConfig={{
                   backgroundColor: COLORS.card,
-                  backgroundGradientFrom: COLORS.card,
+                  backgroundGradientFrom: '#EEF3FB',
                   backgroundGradientTo: COLORS.card,
+                  backgroundGradientFromOpacity: 0.6,
+                  backgroundGradientToOpacity: 0,
                   decimalPlaces: 0,
                   color: (opacity = 1) => `rgba(27, 58, 107, ${opacity})`,
                   labelColor: () => COLORS.textSecondary,
-                  propsForDots: { r: '4', strokeWidth: '2', stroke: COLORS.primary },
-                  propsForBackgroundLines: { stroke: COLORS.border, strokeDasharray: '' },
+                  strokeWidth: 2.5,
+                  propsForDots: { r: '5', strokeWidth: '2', stroke: COLORS.primary, fill: '#fff' },
+                  propsForBackgroundLines: { stroke: COLORS.border, strokeDasharray: '4 4', strokeWidth: 1 },
+                  propsForLabels: { fontSize: 11, fontWeight: '600' },
+                  fillShadowGradient: COLORS.primary,
+                  fillShadowGradientOpacity: 0.12,
                 }}
                 bezier
                 withInnerLines
                 withOuterLines={false}
+                withShadow
                 style={styles.chart}
               />
+              {!hasData && (
+                <View style={styles.chartEmpty}>
+                  <Text style={styles.chartEmptyText}>No routines logged this week yet</Text>
+                </View>
+              )}
             </View>
           );
         })()}
@@ -458,6 +489,16 @@ const styles = StyleSheet.create({
   reminderIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(212, 165, 116, 0.2)', alignItems: 'center', justifyContent: 'center' },
   reminderTitle: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary },
   reminderMsg: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
+
+  // Weekly Progress
+  weeklyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
+  weekRange: { fontSize: 11, color: COLORS.textSecondary, fontWeight: '500', marginTop: 2 },
+  weeklyBadge: { alignItems: 'center', backgroundColor: '#EEF3FB', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
+  weeklyBadgeNum: { fontSize: 20, fontWeight: '800', color: COLORS.primary },
+  weeklyBadgeLabel: { fontSize: 9, color: COLORS.textSecondary, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4 },
+  chart: { marginLeft: -14, marginTop: 4, borderRadius: 12 },
+  chartEmpty: { position: 'absolute', bottom: 28, left: 0, right: 0, alignItems: 'center' },
+  chartEmptyText: { fontSize: 11, color: COLORS.textSecondary, fontStyle: 'italic' },
 
   // Skin
   skinHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },

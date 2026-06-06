@@ -241,40 +241,38 @@ export default function ProductsPage() {
           ))}
         </ScrollView>
 
-        {/* Feature Actions */}
-        <View style={styles.featureRow}>
-          <View style={styles.featureCard}>
-            <View style={styles.featureTitleRow}>
-              <Ionicons name="bookmark" size={15} color={COLORS.primary} />
-              <Text style={styles.featureTitle}>Wishlist</Text>
+        {/* ── Quick Actions ── */}
+        <View style={styles.actionsBar}>
+          <Pressable style={styles.actionItem} onPress={() => setSelectedCategory('Wishlist')}>
+            <View style={[styles.actionIconWrap, savedIds.length > 0 && styles.actionIconActive]}>
+              <Ionicons name="bookmark" size={16} color={savedIds.length > 0 ? COLORS.primary : COLORS.textSecondary} />
             </View>
-            <Text style={styles.featureText}>Track products to buy later, price drops</Text>
-            <Text style={styles.featureCount}>{savedIds.length} saved</Text>
-          </View>
-          <View style={styles.featureCard}>
-            <View style={styles.featureTitleRow}>
-              <Ionicons name="git-compare-outline" size={15} color={COLORS.primary} />
-              <Text style={styles.featureTitle}>Comparison</Text>
+            <View>
+              <Text style={styles.actionLabel}>Wishlist</Text>
+              <Text style={[styles.actionMeta, savedIds.length > 0 && styles.actionMetaActive]}>{savedIds.length} saved</Text>
             </View>
-            <Text style={styles.featureText}>Side-by-side ingredients, prices, reviews</Text>
-            <Pressable
-              style={[styles.compareButton, comparisonProducts.length < 2 && styles.compareButtonDisabled]}
-              onPress={() => setComparisonVisible(true)}
-              disabled={comparisonProducts.length < 2}
-            >
-              <Text style={[styles.compareButtonText, comparisonProducts.length < 2 && styles.compareButtonTextDisabled]}>
-                Compare {compareIds.length > 0 ? `(${compareIds.length})` : ''}
+          </Pressable>
+          <View style={styles.actionDivider} />
+          <Pressable
+            style={styles.actionItem}
+            onPress={() => setComparisonVisible(true)}
+            disabled={compareIds.length < 2}
+          >
+            <View style={[styles.actionIconWrap, compareIds.length >= 2 && styles.actionIconActive]}>
+              <Ionicons name="git-compare-outline" size={16} color={compareIds.length >= 2 ? COLORS.primary : COLORS.textSecondary} />
+            </View>
+            <View>
+              <Text style={styles.actionLabel}>Compare</Text>
+              <Text style={[styles.actionMeta, compareIds.length >= 2 && styles.actionMetaActive]}>
+                {compareIds.length > 0 ? `${compareIds.length} selected` : 'Select items'}
               </Text>
-            </Pressable>
-          </View>
+            </View>
+          </Pressable>
         </View>
 
         {wishlistProducts.length > 0 && selectedCategory !== 'Wishlist' && !searchQuery && (
           <View>
-            <View style={styles.sectionHeader}>
-              <Ionicons name="bookmark" size={16} color={COLORS.primary} />
-              <Text style={styles.sectionTitle}>Wishlist</Text>
-            </View>
+            <Text style={styles.sectionTitle}>Wishlist</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recommendedList}>
               {wishlistProducts.map((p) => (
                 <View key={p.id} style={styles.wishlistCard}>
@@ -302,10 +300,7 @@ export default function ProductsPage() {
         {/* ── Recommended ── */}
         {recommendedProducts.length > 0 && !searchQuery && (
           <View>
-            <View style={styles.sectionHeader}>
-              <Ionicons name="sparkles" size={16} color={COLORS.primary} />
-              <Text style={styles.sectionTitle}>Recommended for you</Text>
-            </View>
+            <Text style={styles.sectionTitle}>Recommended for you</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recommendedList}>
               {recommendedProducts.map((p) => (
                 <View key={p.id} style={styles.recommendedCard}>
@@ -428,7 +423,7 @@ export default function ProductsPage() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.background },
-  scroll: { padding: 20, gap: 12, paddingBottom: 40 },
+  scroll: { padding: 20, gap: 10, paddingBottom: 40 },
 
   headerTitle: { fontSize: 28, fontWeight: '800', color: COLORS.textPrimary },
 
@@ -443,28 +438,25 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 13, color: COLORS.textSecondary, fontWeight: '600' },
   chipTextActive: { color: '#fff' },
 
-  // Feature actions
-  featureRow: { flexDirection: 'row', gap: 10 },
-  featureCard: { flex: 1, minHeight: 126, backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: 12, gap: 7 },
-  featureTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  featureTitle: { fontSize: 13, fontWeight: '800', color: COLORS.textPrimary },
-  featureText: { flex: 1, fontSize: 11, color: COLORS.textSecondary, fontWeight: '600', lineHeight: 16 },
-  featureCount: { fontSize: 11, color: COLORS.primary, fontWeight: '800' },
-  compareButton: { minHeight: 30, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.primary, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7 },
-  compareButtonDisabled: { backgroundColor: COLORS.inputBackground, borderWidth: 1, borderColor: COLORS.border },
-  compareButtonText: { color: COLORS.white, fontSize: 12, fontWeight: '800' },
-  compareButtonTextDisabled: { color: COLORS.textSecondary },
+  // Quick actions bar
+  actionsBar: { flexDirection: 'row', backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
+  actionItem: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14 },
+  actionIconWrap: { width: 34, height: 34, borderRadius: 10, backgroundColor: COLORS.inputBackground, alignItems: 'center', justifyContent: 'center' },
+  actionIconActive: { backgroundColor: 'rgba(27,58,107,0.1)' },
+  actionLabel: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary },
+  actionMeta: { fontSize: 11, color: COLORS.textSecondary, fontWeight: '500', marginTop: 1 },
+  actionMetaActive: { color: COLORS.primary, fontWeight: '700' },
+  actionDivider: { width: 1, backgroundColor: COLORS.border, marginVertical: 12 },
 
   // Section
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 },
-  sectionTitle: { fontSize: 15, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 12 },
+  sectionTitle: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 10, letterSpacing: 0.1 },
   countText: { fontSize: 13, fontWeight: '500', color: COLORS.textSecondary },
 
   // Recommended horizontal cards
   recommendedList: { gap: 12, paddingRight: 4, paddingBottom: 4 },
   recommendedCard: { width: 160, backgroundColor: COLORS.card, borderRadius: 14, padding: 12, borderWidth: 1, borderColor: COLORS.border, gap: 6 },
   recommendedTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  categoryPill: { backgroundColor: 'rgba(212,165,116,0.15)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
+  categoryPill: { backgroundColor: 'rgba(27,58,107,0.08)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   categoryPillText: { fontSize: 10, fontWeight: '700', color: COLORS.primary, textTransform: 'capitalize' },
   recommendedName: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary },
   recommendedDesc: { fontSize: 11, color: COLORS.textSecondary, lineHeight: 16 },
