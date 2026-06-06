@@ -4,6 +4,7 @@ import { collection, doc, limit, onSnapshot, orderBy, query, Timestamp, updateDo
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Dimensions,
   Modal,
   Pressable,
   ScrollView,
@@ -11,6 +12,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { LineChart } from 'react-native-chart-kit';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS } from '../../src/constants/theme';
 import { clientPath } from '../../src/constants/firestore';
@@ -40,6 +42,7 @@ export default function ClientDashboard() {
   const [skinAnalysisDate, setSkinAnalysisDate] = useState<string | null>(null);
   const [reminders, setReminders] = useState<ReminderLog[]>([]);
   const [reminderModalVisible, setReminderModalVisible] = useState(false);
+  const [weeklyData, setWeeklyData] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -89,7 +92,33 @@ export default function ClientDashboard() {
       }
     );
 
-    // 5. Latest skin analysis
+    // 5. Weekly routine logs (last 7 days)
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+    sevenDaysAgo.setHours(0, 0, 0, 0);
+    const unsubWeekly = onSnapshot(
+      query(
+        collection(db, 'routineLogs'),
+        where('clientId', '==', user.uid),
+        where('logDate', '>=', Timestamp.fromDate(sevenDaysAgo))
+      ),
+      (snap) => {
+        const counts: Record<string, number> = {};
+        snap.docs.forEach(d => {
+          const date = d.data().logDate?.toDate();
+          if (date) counts[date.toDateString()] = (counts[date.toDateString()] || 0) + 1;
+        });
+        setWeeklyData(
+          Array.from({ length: 7 }, (_, i) => {
+            const d = new Date();
+            d.setDate(d.getDate() - (6 - i));
+            return counts[d.toDateString()] || 0;
+          })
+        );
+      }
+    );
+
+    // 6. Latest skin analysis
     const unsubSkin = onSnapshot(
       query(
         collection(db, 'skinLogs'),
