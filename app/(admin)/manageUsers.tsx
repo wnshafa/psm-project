@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useLocalSearchParams } from 'expo-router';
 import {
   collection,
   deleteDoc,
@@ -10,24 +11,22 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore';
-import { useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
   Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  View,
+  View
 } from 'react-native';
 
+import { SKIN_METRICS } from '../../src/constants/metrics';
 import { BORDER_RADIUS, COLORS, FONT_SIZE, SPACING } from '../../src/constants/theme';
 import { useClientsWithProfiles } from '../../src/hooks/useClientsWithProfiles';
-import { SKIN_METRICS } from '../../src/constants/metrics';
 import { db } from '../../src/lib/firebase';
 import { RoutineLog, SkinPhoto, UserData } from '../../src/types';
 
@@ -109,11 +108,6 @@ export default function ManageUsers() {
   const [skinPhotosMap, setSkinPhotosMap] = useState<Record<string, ClientSkinPhoto[]>>({});
   const [skinMetricsMap, setSkinMetricsMap] = useState<Record<string, SkinMetricLog[]>>({});
   const [loadingDetailsFor, setLoadingDetailsFor] = useState<string | null>(null);
-
-  const [feedbackModalVisible, setFeedbackModalVisible] = useState(false);
-  const [selectedPhoto, setSelectedPhoto] = useState<ClientSkinPhoto | null>(null);
-  const [feedbackText, setFeedbackText] = useState('');
-  const [submittingFeedback, setSubmittingFeedback] = useState(false);
 
   const [progressModalUser, setProgressModalUser] = useState<MergedUser | null>(null);
 
@@ -268,39 +262,6 @@ export default function ManageUsers() {
       Alert.alert('Error', getErrorMessage(error, 'Failed to update user status. Please try again.'));
     } finally {
       setTogglingUserId(null);
-    }
-  };
-
-  const handleSubmitFeedback = async () => {
-    if (!selectedPhoto || !feedbackText.trim()) {
-      Alert.alert('Error', 'Please enter some feedback.');
-      return;
-    }
-
-    setSubmittingFeedback(true);
-    try {
-      const photoRef = doc(db, 'skinLogs', selectedPhoto.id);
-      const feedback = feedbackText.trim();
-      await updateDoc(photoRef, {
-        consultantFeedback: feedback,
-        feedbackDate: Timestamp.now(),
-      });
-
-      setSkinPhotosMap((prev) => ({
-        ...prev,
-        [selectedPhoto.clientId ?? selectedPhoto.userId]: (prev[selectedPhoto.clientId ?? selectedPhoto.userId] ?? []).map((photo) =>
-          photo.id === selectedPhoto.id ? { ...photo, consultantFeedback: feedback, feedbackDate: Timestamp.now() } : photo
-        ),
-      }));
-
-      Alert.alert('Success', 'Feedback saved successfully.');
-      setFeedbackModalVisible(false);
-      setFeedbackText('');
-      setSelectedPhoto(null);
-    } catch (error: any) {
-      Alert.alert('Error', error.message);
-    } finally {
-      setSubmittingFeedback(false);
     }
   };
 
@@ -487,39 +448,6 @@ export default function ManageUsers() {
             );
           })}
         </View>
-
-        {/* Skin progress photos */}
-        <Text style={[styles.panelTitle, { marginTop: 14 }]}>Skin Progress Photos</Text>
-        {photos.length === 0 ? (
-          <Text style={styles.emptyInline}>No skin progress photos found.</Text>
-        ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoStrip}>
-            {photos.map((photo) => (
-              <View key={photo.id} style={styles.photoCard}>
-                <Image source={{ uri: photo.imageUrl }} style={styles.skinImage} />
-                <Text style={styles.photoDate}>{formatDate(photo.date)}</Text>
-                {photo.consultantFeedback && (
-                  <View style={styles.feedbackPreview}>
-                    <Text style={styles.feedbackLabel}>Consultant Note</Text>
-                    <Text style={styles.feedbackText} numberOfLines={3}>
-                      {photo.consultantFeedback}
-                    </Text>
-                  </View>
-                )}
-                <Pressable
-                  style={styles.feedbackBtn}
-                  onPress={() => {
-                    setSelectedPhoto(photo);
-                    setFeedbackText(photo.consultantFeedback || '');
-                    setFeedbackModalVisible(true);
-                  }}
-                >
-                  <Text style={styles.feedbackBtnText}>{photo.consultantFeedback ? 'Edit Feedback' : 'Add Feedback'}</Text>
-                </Pressable>
-              </View>
-            ))}
-          </ScrollView>
-        )}
 
         {/* Activity history */}
         <Text style={[styles.panelTitle, { marginTop: 14 }]}>Activity History</Text>
@@ -844,32 +772,6 @@ export default function ManageUsers() {
         )}
       </ScrollView>
 
-      <Modal visible={feedbackModalVisible} animationType="fade" transparent onRequestClose={() => setFeedbackModalVisible(false)}>
-        <View style={styles.feedbackModalOverlay}>
-          <View style={styles.feedbackModal}>
-            <View style={styles.feedbackModalHeader}>
-              <Text style={styles.feedbackModalTitle}>Consultant Feedback</Text>
-              <Pressable onPress={() => setFeedbackModalVisible(false)}>
-                <Ionicons name="close" size={24} color={COLORS.textPrimary} />
-              </Pressable>
-            </View>
-
-            <TextInput
-              style={styles.feedbackInput}
-              multiline
-              placeholder="Write your advice or observations here..."
-              placeholderTextColor={COLORS.textSecondary}
-              value={feedbackText}
-              onChangeText={setFeedbackText}
-            />
-
-            <Pressable style={styles.saveFeedbackBtn} onPress={handleSubmitFeedback} disabled={submittingFeedback}>
-              {submittingFeedback ? <ActivityIndicator color={COLORS.white} /> : <Text style={styles.saveFeedbackText}>Save Feedback</Text>}
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-
       {/* Progress Detail Modal */}
       <Modal
         visible={!!progressModalUser}
@@ -1012,37 +914,6 @@ export default function ManageUsers() {
                       })}
                     </View>
 
-                    {/* Skin progress photos */}
-                    <Text style={[styles.panelTitle, { marginTop: 14 }]}>Skin Progress Photos</Text>
-                    {photos.length === 0 ? (
-                      <Text style={styles.emptyInline}>No skin progress photos found.</Text>
-                    ) : (
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoStrip}>
-                        {photos.map((photo) => (
-                          <View key={photo.id} style={styles.photoCard}>
-                            <Image source={{ uri: photo.imageUrl }} style={styles.skinImage} />
-                            <Text style={styles.photoDate}>{formatDate(photo.date)}</Text>
-                            {photo.consultantFeedback && (
-                              <View style={styles.feedbackPreview}>
-                                <Text style={styles.feedbackLabel}>Consultant Note</Text>
-                                <Text style={styles.feedbackText} numberOfLines={3}>{photo.consultantFeedback}</Text>
-                              </View>
-                            )}
-                            <Pressable
-                              style={styles.feedbackBtn}
-                              onPress={() => {
-                                setSelectedPhoto(photo);
-                                setFeedbackText(photo.consultantFeedback || '');
-                                setFeedbackModalVisible(true);
-                              }}
-                            >
-                              <Text style={styles.feedbackBtnText}>{photo.consultantFeedback ? 'Edit Feedback' : 'Add Feedback'}</Text>
-                            </Pressable>
-                          </View>
-                        ))}
-                      </ScrollView>
-                    )}
-
                     {/* Activity history */}
                     <Text style={[styles.panelTitle, { marginTop: 14 }]}>Activity History</Text>
                     {logs.length === 0 ? (
@@ -1124,15 +995,6 @@ const styles = StyleSheet.create({
   panelLoader: { marginVertical: 24 },
   emptyInline: { color: COLORS.textSecondary, textAlign: 'center', fontSize: 13, fontWeight: '500', paddingVertical: 14 },
   emptyPanel: { alignItems: 'center', gap: 6, paddingVertical: 22 },
-  photoStrip: { marginBottom: 14 },
-  photoCard: { width: 150, marginRight: 12, alignItems: 'center' },
-  skinImage: { width: 140, height: 180, borderRadius: BORDER_RADIUS.md, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
-  photoDate: { fontSize: 10, color: COLORS.textSecondary, marginTop: 6, fontWeight: '700' },
-  feedbackPreview: { marginTop: 8, padding: 8, backgroundColor: COLORS.background, borderRadius: 8, width: 140 },
-  feedbackLabel: { fontSize: 10, fontWeight: '700', color: COLORS.textSecondary, marginBottom: 2, textTransform: 'uppercase' },
-  feedbackText: { fontSize: 11, color: COLORS.textPrimary, fontStyle: 'italic' },
-  feedbackBtn: { marginTop: 8, paddingVertical: 7, paddingHorizontal: 12, backgroundColor: 'rgba(27,58,107,0.12)', borderRadius: 8, width: 140 },
-  feedbackBtnText: { color: COLORS.primary, fontSize: 12, fontWeight: '700', textAlign: 'center' },
   logsList: { backgroundColor: COLORS.card, borderRadius: BORDER_RADIUS.md, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
   logRow: { flexDirection: 'row', alignItems: 'center', padding: SPACING.md, borderBottomWidth: 1, borderBottomColor: COLORS.border, gap: SPACING.md },
   logIndicator: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.success },
@@ -1178,11 +1040,4 @@ const styles = StyleSheet.create({
   progressModalName: { fontSize: 15, fontWeight: '800', color: COLORS.textPrimary },
   progressModalClose: { padding: 4 },
   progressModalScroll: { padding: 18, gap: 4 },
-  feedbackModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
-  feedbackModal: { backgroundColor: COLORS.card, borderRadius: BORDER_RADIUS.lg, padding: SPACING.lg },
-  feedbackModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
-  feedbackModalTitle: { fontSize: FONT_SIZE.lg, fontWeight: '700', color: COLORS.textPrimary },
-  feedbackInput: { backgroundColor: COLORS.background, borderWidth: 1, borderColor: COLORS.border, borderRadius: BORDER_RADIUS.md, padding: SPACING.md, height: 110, textAlignVertical: 'top', color: COLORS.textPrimary },
-  saveFeedbackBtn: { backgroundColor: COLORS.primary, padding: 15, borderRadius: BORDER_RADIUS.md, marginTop: 20, alignItems: 'center' },
-  saveFeedbackText: { color: COLORS.white, fontWeight: '700' },
 });

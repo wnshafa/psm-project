@@ -41,10 +41,12 @@ export const getSessionHome = (role: SessionRole) => {
 };
 
 export const canUseCurrentPlatform = (role: SessionRole) => {
-  return role === 'admin' ? Platform.OS === 'web' : Platform.OS !== 'web';
+  // Admins: web only. Clients: web + mobile.
+  if (role === 'admin') return Platform.OS === 'web';
+  return true;
 };
 
 export const getPlatformAccessMessage = (role: SessionRole) => {
   if (role === 'admin') return 'Admin access is web-only. Please visit the admin portal in your browser.';
-  return 'Client access is mobile-only. Please use the PRESTIGEMY mobile app.';
+  return 'Please log in to continue.';
 };
