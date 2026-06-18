@@ -30,16 +30,120 @@ import Toast from "../../src/components/Toast";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface Step { title: string; instructions: string; }
+interface Product {
+  id: string;
+  name: string;
+  category?: string;
+}
+
+interface Step { productId: string; stepName: string; instructions: string; }
 interface Routine {
   id: string; clientId: string; type: "Morning" | "Night";
-  duration?: string; description?: string;
+  duration?: string; description?: string; restrictions?: string;
   assignedDate?: any; steps: Step[];
 }
 interface Template {
   id: string; type: "Morning" | "Night";
   duration?: string; description?: string; steps: Step[];
 }
+
+interface PredefinedTemplate {
+  id: string; name: string; description: string;
+  morningSteps: Step[]; nightSteps: Step[];
+  duration: string; restrictions: string;
+}
+
+const PREDEFINED_TEMPLATES: PredefinedTemplate[] = [
+  {
+    id: "post-laser", name: "Post Laser Treatment",
+    description: "Gentle recovery routine for post-laser skin",
+    duration: "4 Weeks",
+    restrictions: "Avoid direct sun exposure. No exfoliating acids. Use only lukewarm water. No makeup for 48 hours.",
+    morningSteps: [
+      { productId: "", stepName: "Gentle Cleanser", instructions: "Wash with lukewarm water and a gentle, non-foaming cleanser. Pat dry — do not rub." },
+      { productId: "", stepName: "Soothing Serum", instructions: "Apply a thin layer of panthenol or centella asiatica serum to calm the skin." },
+      { productId: "", stepName: "Physical SPF 50+", instructions: "Apply a thick layer of mineral-based sunscreen. Reapply every 2 hours if outdoors." },
+    ],
+    nightSteps: [
+      { productId: "", stepName: "Gentle Cleanser", instructions: "Double cleanse using an oil-based balm followed by a gentle milk cleanser." },
+      { productId: "", stepName: "Barrier Repair Moisturizer", instructions: "Apply a ceramide-rich moisturizer to support skin barrier recovery." },
+      { productId: "", stepName: "Healing Ointment", instructions: "Seal with a thin layer of petroleum-free healing ointment on treated areas." },
+    ],
+  },
+  {
+    id: "deep-cleansing", name: "Deep Cleansing",
+    description: "Thorough pore-cleansing and exfoliation routine",
+    duration: "8 Weeks",
+    restrictions: "Do not use if skin is irritated or broken. Limit exfoliation to 2-3 times per week.",
+    morningSteps: [
+      { productId: "", stepName: "Water-Based Cleanser", instructions: "Use a gentle water-based cleanser to remove overnight buildup." },
+      { productId: "", stepName: "Vitamin C Serum", instructions: "Apply 2-3 drops of vitamin C serum for antioxidant protection." },
+      { productId: "", stepName: "Oil-Free Moisturizer", instructions: "Use a lightweight, oil-free moisturizer to hydrate without clogging pores." },
+      { productId: "", stepName: "SPF 30+", instructions: "Finish with a non-comedogenic sunscreen." },
+    ],
+    nightSteps: [
+      { productId: "", stepName: "Oil-Based Cleanser", instructions: "Start with an oil-based cleanser to dissolve sebum and makeup." },
+      { productId: "", stepName: "Salicylic Acid Cleanser", instructions: "Follow with a salicylic acid cleanser (2%) focusing on T-zone." },
+      { productId: "", stepName: "Clay Mask (2x/week)", instructions: "Apply a thin layer of kaolin clay mask for 10 minutes, twice per week." },
+      { productId: "", stepName: "Niacinamide Serum", instructions: "Apply niacinamide 10% serum to regulate oil production." },
+      { productId: "", stepName: "Gel Moisturizer", instructions: "Seal with a mattifying gel moisturizer." },
+    ],
+  },
+  {
+    id: "acne-treatment", name: "Acne Treatment",
+    description: "Targeted routine for acne-prone and congested skin",
+    duration: "12 Weeks",
+    restrictions: "Avoid picking or squeezing lesions. Discontinue if excessive dryness or peeling occurs. Use only non-comedogenic products.",
+    morningSteps: [
+      { productId: "", stepName: "Gentle Foaming Cleanser", instructions: "Cleanse with a low-pH foaming cleanser containing salicylic acid." },
+      { productId: "", stepName: "Oil-Free Moisturizer", instructions: "Apply a lightweight, oil-free moisturizer with hyaluronic acid." },
+      { productId: "", stepName: "SPF 50+ Gel", instructions: "Use an oil-free, matte-finish sunscreen. Reapply midday." },
+    ],
+    nightSteps: [
+      { productId: "", stepName: "Double Cleanse", instructions: "Oil cleanser first, then a benzoyl peroxide or salicylic acid cleanser." },
+      { productId: "", stepName: "Treatment Serum", instructions: "Apply a retinoid or azelaic acid serum to active breakouts. Start every other night." },
+      { productId: "", stepName: "Non-Comedogenic Moisturizer", instructions: "Use a ceramide-based moisturizer to prevent moisture barrier damage." },
+      { productId: "", stepName: "Spot Treatment", instructions: "Apply a sulfur or benzoyl peroxide spot treatment on active lesions only." },
+    ],
+  },
+  {
+    id: "hydration-recovery", name: "Hydration Recovery",
+    description: "Intensive moisture restoration for dehydrated or damaged skin barrier",
+    duration: "4 Weeks",
+    restrictions: "Avoid harsh cleansers and exfoliants. Drink at least 8 glasses of water daily. Use a humidifier at night.",
+    morningSteps: [
+      { productId: "", stepName: "Creamy Non-Foaming Cleanser", instructions: "Use a milk or cream cleanser that does not strip the skin." },
+      { productId: "", stepName: "Hyaluronic Acid Serum", instructions: "Apply to damp skin. Layer 2-3 drops and pat gently." },
+      { productId: "", stepName: "Barrier Cream", instructions: "Apply a rich moisturizer with ceramides, squalane, and shea butter." },
+      { productId: "", stepName: "Hydrating SPF 30+", instructions: "Use a moisturizing sunscreen with added glycerin or hyaluronic acid." },
+    ],
+    nightSteps: [
+      { productId: "", stepName: "Oil Cleanser", instructions: "Use an oil-based cleanser to gently remove impurities without stripping." },
+      { productId: "", stepName: "Hydrating Toner", instructions: "Apply a hydrating toner with glycerin and panthenol using a cotton pad." },
+      { productId: "", stepName: "Snail Mucin Essence", instructions: "Apply snail mucin essence for deep hydration and repair." },
+      { productId: "", stepName: "Sleeping Mask", instructions: "Finish with an overnight hydrating mask or a thick layer of barrier cream." },
+    ],
+  },
+  {
+    id: "brightening-treatment", name: "Brightening Treatment",
+    description: "Targets hyperpigmentation, dark spots, and uneven skin tone",
+    duration: "8 Weeks",
+    restrictions: "Strict sun protection required. Avoid other exfoliating acids. Results visible after 4-6 weeks.",
+    morningSteps: [
+      { productId: "", stepName: "Low-pH Cleanser", instructions: "Cleanse with a low-pH gel cleanser to prep skin for actives." },
+      { productId: "", stepName: "Vitamin C Serum (15-20%)", instructions: "Apply on dry skin. Wait 3 minutes before next step." },
+      { productId: "", stepName: "Niacinamide Moisturizer", instructions: "Use a moisturizer with 5% niacinamide to boost brightening." },
+      { productId: "", stepName: "SPF 50+ PA++++", instructions: "Apply a broad-spectrum sunscreen. Reapply every 2 hours." },
+    ],
+    nightSteps: [
+      { productId: "", stepName: "Oil-Based Cleanser", instructions: "Dissolve sunscreen and impurities with an oil cleanser." },
+      { productId: "", stepName: "Gentle Foaming Cleanser", instructions: "Follow with a gentle foaming cleanser." },
+      { productId: "", stepName: "Exfoliating Toner (3x/week)", instructions: "Apply glycolic acid (5-7%) toner 3 times per week. Do not rinse." },
+      { productId: "", stepName: "Brightening Serum", instructions: "Apply alpha-arbutin or tranexamic acid serum to dark spots." },
+      { productId: "", stepName: "Rich Moisturizer", instructions: "Seal with a nourishing night cream containing vitamin E and peptides." },
+    ],
+  },
+];
 
 // ─── Client search modal ──────────────────────────────────────────────────────
 
@@ -92,7 +196,7 @@ function ClientSearchModal({
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-const EMPTY_STEPS: Step[] = [{ title: "", instructions: "" }];
+const EMPTY_STEPS: Step[] = [{ productId: "", stepName: "", instructions: "" }];
 
 export default function AssignRoutine() {
   const { clients } = useClientsWithProfiles();
@@ -115,6 +219,15 @@ export default function AssignRoutine() {
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [deletingTemplateId, setDeletingTemplateId] = useState<string | null>(null);
 
+  // Predefined templates
+  const [predefinedModalVisible, setPredefinedModalVisible] = useState(false);
+  const [restrictions, setRestrictions] = useState("");
+
+  // Products
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(true);
+  const [productPickerIndex, setProductPickerIndex] = useState<number | null>(null);
+
   const [assigning, setAssigning] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [toast, setToast] = useState({ visible: false, message: "" });
@@ -125,6 +238,14 @@ export default function AssignRoutine() {
     return onSnapshot(collection(db, "routineTemplates"), (snap) => {
       setTemplates(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Template)));
     });
+  }, []);
+
+  // Fetch products
+  useEffect(() => {
+    setLoadingProducts(true);
+    getDocs(collection(db, "products")).then((snap) => {
+      setProducts(snap.docs.map((d) => ({ id: d.id, name: d.data().name, category: d.data().category } as Product)));
+    }).catch(() => {}).finally(() => setLoadingProducts(false));
   }, []);
 
   // Fetch routines when client changes
@@ -142,35 +263,50 @@ export default function AssignRoutine() {
     setRoutineType("Morning");
     setDuration("");
     setSteps([...EMPTY_STEPS]);
+    setRestrictions("");
   }
 
   function loadForEditing(routine: Routine) {
     setEditingRoutineId(routine.id);
     setRoutineType(routine.type);
     setDuration(routine.duration ?? "");
-    setSteps(routine.steps?.length ? routine.steps : [...EMPTY_STEPS]);
+    setRestrictions(routine.restrictions ?? "");
+    setSteps(routine.steps?.length ? routine.steps.map((s) => ({ productId: (s as any).productId ?? "", stepName: (s as any).stepName || (s as any).title || "", instructions: s.instructions })) : [...EMPTY_STEPS]);
     setActiveTab("assign");
   }
 
   function loadTemplate(t: Template) {
     setRoutineType(t.type);
     setDuration(t.duration ?? "");
-    setSteps(t.steps?.length ? t.steps : [...EMPTY_STEPS]);
+    setSteps(t.steps?.length ? t.steps.map((s) => ({ productId: (s as any).productId ?? "", stepName: (s as any).stepName || (s as any).title || "", instructions: s.instructions })) : [...EMPTY_STEPS]);
     setTemplateModalVisible(false);
     setActiveTab("assign");
     showToast("Template loaded.");
   }
 
-  const addStep = () => setSteps((prev) => [...prev, { title: "", instructions: "" }]);
+  function loadPredefinedTemplate(t: PredefinedTemplate) {
+    const stepsForType = routineType === "Morning" ? t.morningSteps : t.nightSteps;
+    setDuration(t.duration);
+    setRestrictions(t.restrictions);
+    setSteps(stepsForType.map((s) => ({ ...s })));
+    setPredefinedModalVisible(false);
+    showToast(`"${t.name}" template loaded.`);
+  }
+
+  const addStep = () => setSteps((prev) => [...prev, { productId: "", stepName: "", instructions: "" }]);
   const removeStep = (i: number) => { if (steps.length > 1) setSteps(steps.filter((_, idx) => idx !== i)); };
   const updateStep = (i: number, key: keyof Step, val: string) => {
     setSteps((prev) => prev.map((s, idx) => idx === i ? { ...s, [key]: val } : s));
+  };
+  const selectProductForStep = (i: number, product: Product) => {
+    setSteps((prev) => prev.map((s, idx) => idx === i ? { ...s, productId: product.id, stepName: product.name } : s));
+    setProductPickerIndex(null);
   };
 
   async function handleAssign() {
     if (!selectedClient) { window.alert("Please select a client first."); return; }
     if (!duration.trim()) { window.alert("Please enter a duration."); return; }
-    if (!steps[0].title.trim()) { window.alert("Please add at least one step with a title."); return; }
+    if (!steps[0].stepName.trim()) { window.alert("Please add at least one step with a product."); return; }
 
     const conflict = existingRoutines.find((r) => r.type === routineType && r.id !== editingRoutineId);
     if (conflict) { window.alert(`A ${routineType} routine already exists for this client. Edit the existing one instead.`); return; }
@@ -182,8 +318,9 @@ export default function AssignRoutine() {
         type: routineType,
         duration: duration.trim(),
         description: `${routineType} Routine (${duration.trim()})`,
+        restrictions: restrictions.trim(),
         assignedDate: Timestamp.now(),
-        steps: steps.map((s) => ({ title: s.title.trim(), instructions: s.instructions.trim() })),
+        steps: steps.map((s) => ({ productId: s.productId, stepName: s.stepName.trim(), instructions: s.instructions.trim() })),
       };
       if (editingRoutineId) {
         await updateDoc(doc(db, "routines", editingRoutineId), payload);
@@ -214,7 +351,7 @@ export default function AssignRoutine() {
   }
 
   async function handleSaveTemplate() {
-    if (!duration.trim() || !steps[0].title.trim()) {
+    if (!duration.trim() || !steps[0].stepName.trim()) {
       window.alert("Fill in duration and at least one step before saving as template."); return;
     }
     setSavingTemplate(true);
@@ -223,7 +360,7 @@ export default function AssignRoutine() {
         type: routineType,
         duration: duration.trim(),
         description: `${routineType} Routine (${duration.trim()})`,
-        steps: steps.map((s) => ({ title: s.title.trim(), instructions: s.instructions.trim() })),
+        steps: steps.map((s) => ({ productId: s.productId, stepName: s.stepName.trim(), instructions: s.instructions.trim() })),
         createdAt: Timestamp.now(),
       });
       showToast("Saved to templates.");
@@ -456,6 +593,23 @@ export default function AssignRoutine() {
                 <Text style={s.loadTemplateBtnText}>Load from Template</Text>
               </Pressable>
 
+              {/* Select Template (predefined) */}
+              <Pressable style={s.predefinedTemplateBtn} onPress={() => setPredefinedModalVisible(true)}>
+                <Ionicons name="layers-outline" size={14} color={COLORS.primary} />
+                <Text style={s.loadTemplateBtnText}>Select Template</Text>
+              </Pressable>
+
+              {/* Restrictions */}
+              <Text style={s.fieldLabel}>Restrictions</Text>
+              <TextInput
+                style={[s.input, s.textArea]}
+                placeholder="e.g. Avoid sun exposure, no exfoliating acids..."
+                placeholderTextColor={COLORS.textSecondary}
+                multiline
+                value={restrictions}
+                onChangeText={setRestrictions}
+              />
+
               {/* Steps */}
               <View style={s.stepsHeader}>
                 <Text style={s.fieldLabel}>Steps</Text>
@@ -465,7 +619,9 @@ export default function AssignRoutine() {
                 </Pressable>
               </View>
 
-              {steps.map((step, i) => (
+              {steps.map((step, i) => {
+                const selectedProduct = products.find((p) => p.id === step.productId);
+                return (
                 <View key={i} style={s.stepCard}>
                   <View style={s.stepCardHeader}>
                     <View style={s.stepBadge}>
@@ -477,13 +633,19 @@ export default function AssignRoutine() {
                       </Pressable>
                     )}
                   </View>
-                  <TextInput
-                    style={s.input}
-                    placeholder="Step title"
-                    placeholderTextColor={COLORS.textSecondary}
-                    value={step.title}
-                    onChangeText={(v) => updateStep(i, "title", v)}
-                  />
+                  <Pressable
+                    style={[s.input, { flexDirection: "row", alignItems: "center", justifyContent: "space-between" }]}
+                    onPress={() => setProductPickerIndex(i)}
+                  >
+                    <Text style={{ color: selectedProduct ? COLORS.textPrimary : COLORS.textSecondary, flex: 1 }}>
+                      {selectedProduct ? selectedProduct.name : "Select a product..."}
+                    </Text>
+                    {loadingProducts ? (
+                      <ActivityIndicator size="small" color={COLORS.textSecondary} />
+                    ) : (
+                      <Ionicons name="chevron-down" size={16} color={COLORS.textSecondary} />
+                    )}
+                  </Pressable>
                   <TextInput
                     style={[s.input, s.textArea]}
                     placeholder="Instructions..."
@@ -493,7 +655,8 @@ export default function AssignRoutine() {
                     onChangeText={(v) => updateStep(i, "instructions", v)}
                   />
                 </View>
-              ))}
+                );
+              })}
 
               {/* Footer buttons */}
               <View style={s.formFooter}>
@@ -616,6 +779,75 @@ export default function AssignRoutine() {
                     </Pressable>
                   );
                 }}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Predefined template picker modal */}
+      <Modal visible={predefinedModalVisible} transparent animationType="fade" onRequestClose={() => setPredefinedModalVisible(false)}>
+        <View style={s.modalOverlay}>
+          <View style={s.templatePickerModal}>
+            <View style={s.modalHead}>
+              <Text style={s.modalTitle}>Select Routine Template</Text>
+              <Pressable onPress={() => setPredefinedModalVisible(false)}>
+                <Ionicons name="close" size={22} color={COLORS.textSecondary} />
+              </Pressable>
+            </View>
+            <FlatList
+              data={PREDEFINED_TEMPLATES}
+              keyExtractor={(i) => i.id}
+              contentContainerStyle={{ gap: 8, padding: 16 }}
+              renderItem={({ item: t }) => (
+                <Pressable style={s.optionItem} onPress={() => loadPredefinedTemplate(t)}>
+                  <View style={[s.clientAvatar, { backgroundColor: COLORS.primary + "18" }]}>
+                    <Ionicons name="layers-outline" size={16} color={COLORS.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.optionText}>{t.name}</Text>
+                    <Text style={[s.clientEmail, { marginTop: 2 }]}>{t.description} · {t.duration}</Text>
+                  </View>
+                  <Ionicons name="download-outline" size={16} color={COLORS.primary} />
+                </Pressable>
+              )}
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Product picker modal */}
+      <Modal visible={productPickerIndex !== null} transparent animationType="fade" onRequestClose={() => setProductPickerIndex(null)}>
+        <View style={s.modalOverlay}>
+          <View style={s.templatePickerModal}>
+            <View style={s.modalHead}>
+              <Text style={s.modalTitle}>Select Product</Text>
+              <Pressable onPress={() => setProductPickerIndex(null)}>
+                <Ionicons name="close" size={22} color={COLORS.textSecondary} />
+              </Pressable>
+            </View>
+            {loadingProducts ? (
+              <ActivityIndicator size="large" color={COLORS.primary} style={{ margin: 40 }} />
+            ) : (
+              <FlatList
+                data={products}
+                keyExtractor={(p) => p.id}
+                contentContainerStyle={{ gap: 6, padding: 16 }}
+                renderItem={({ item: p }) => (
+                  <Pressable style={s.clientRow} onPress={() => {
+                    if (productPickerIndex !== null) selectProductForStep(productPickerIndex, p);
+                  }}>
+                    <View style={[s.clientAvatar, { backgroundColor: COLORS.primary + "18" }]}>
+                      <Ionicons name="leaf-outline" size={16} color={COLORS.primary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.clientName}>{p.name}</Text>
+                      {p.category ? <Text style={s.clientEmail}>{p.category}</Text> : null}
+                    </View>
+                    <Ionicons name="add-circle-outline" size={18} color={COLORS.primary} />
+                  </Pressable>
+                )}
+                ListEmptyComponent={<Text style={s.emptyText}>No products found.</Text>}
               />
             )}
           </View>
@@ -767,6 +999,13 @@ const s = StyleSheet.create({
     backgroundColor: COLORS.primary + "08",
   },
   loadTemplateBtnText: { fontSize: FONT_SIZE.xs, color: COLORS.primary, fontWeight: "600" },
+  predefinedTemplateBtn: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    alignSelf: "flex-start",
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 20, borderWidth: 1, borderColor: COLORS.primary + "40",
+    backgroundColor: COLORS.primary + "08",
+  },
 
   stepsHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   addStepBtn: {

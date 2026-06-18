@@ -7,11 +7,11 @@ import {
   Animated,
   Platform,
   Pressable,
+  StyleSheet,
   Text,
   View,
-  StyleSheet,
 } from 'react-native';
-import { COLORS, FONT_SIZE, SPACING, BORDER_RADIUS } from '../../src/constants/theme';
+import { BORDER_RADIUS, COLORS, FONT_SIZE, SPACING } from '../../src/constants/theme';
 import { auth } from '../../src/lib/firebase';
 import { canUseCurrentPlatform, getSessionProfile } from '../../src/lib/session';
 
@@ -19,7 +19,7 @@ const SIDEBAR_FULL = 240;
 const SIDEBAR_COLLAPSED = 64;
 
 const NAV_ITEMS = [
-  { route: '/(admin)/homePage', path: '/homePage', label: 'Monitor Adherence', icon: 'stats-chart-outline' },
+  { route: '/(admin)/homePage', path: '/homePage', label: 'Dashboard', icon: 'stats-chart-outline' },
   { route: '/(admin)/assignRoutine', path: '/assignRoutine', label: 'Assign Routines', icon: 'flask-outline' },
   { route: '/(admin)/adminReminder', path: '/adminReminder', label: 'Send Reminders', icon: 'notifications-outline' },
   { route: '/(admin)/manageUsers', path: '/manageUsers', label: 'Client Management', icon: 'people-outline' },

@@ -28,7 +28,7 @@ import { SKIN_METRICS } from '../../src/constants/metrics';
 import { BORDER_RADIUS, COLORS, FONT_SIZE, SPACING } from '../../src/constants/theme';
 import { useClientsWithProfiles } from '../../src/hooks/useClientsWithProfiles';
 import { db } from '../../src/lib/firebase';
-import { RoutineLog, SkinPhoto, UserData } from '../../src/types';
+import { RoutineLog, UserData } from '../../src/types';
 
 type AdminTab = 'users' | 'progress' | 'skin';
 
@@ -44,10 +44,6 @@ type SkinMetricLog = {
   oiliness?: number;
   sensitivity?: number;
   brightness?: number;
-};
-
-type ClientSkinPhoto = SkinPhoto & {
-  clientId?: string;
 };
 
 const TABS: { key: AdminTab; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
@@ -105,7 +101,6 @@ export default function ManageUsers() {
   const [togglingUserId, setTogglingUserId] = useState<string | null>(null);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [routineLogsMap, setRoutineLogsMap] = useState<Record<string, RoutineLog[]>>({});
-  const [skinPhotosMap, setSkinPhotosMap] = useState<Record<string, ClientSkinPhoto[]>>({});
   const [skinMetricsMap, setSkinMetricsMap] = useState<Record<string, SkinMetricLog[]>>({});
   const [loadingDetailsFor, setLoadingDetailsFor] = useState<string | null>(null);
 
@@ -148,25 +143,18 @@ export default function ManageUsers() {
   const loadClientDetails = useCallback(async (clientId: string, tab: AdminTab = activeTab) => {
     if (tab === 'users') return;
 
-    const hasProgress = routineLogsMap[clientId] && skinPhotosMap[clientId];
+    const hasProgress = routineLogsMap[clientId];
     const hasSkinMetrics = skinMetricsMap[clientId];
     if ((tab === 'progress' && hasProgress) || (tab === 'skin' && hasSkinMetrics)) return;
 
     setLoadingDetailsFor(clientId);
     try {
       if (tab === 'progress') {
-        const [logsSnap, photosSnap] = await Promise.all([
-          getDocs(query(collection(db, 'routineLogs'), where('clientId', '==', clientId), orderBy('logDate', 'desc'))),
-          getDocs(query(collection(db, 'skinLogs'), where('clientId', '==', clientId), orderBy('date', 'desc'))),
-        ]);
+        const logsSnap = await getDocs(query(collection(db, 'routineLogs'), where('clientId', '==', clientId), orderBy('logDate', 'desc')));
 
         setRoutineLogsMap((prev) => ({
           ...prev,
           [clientId]: logsSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as RoutineLog[],
-        }));
-        setSkinPhotosMap((prev) => ({
-          ...prev,
-          [clientId]: photosSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as ClientSkinPhoto[],
         }));
       }
 
@@ -181,14 +169,13 @@ export default function ManageUsers() {
       console.error('Failed to load client details:', error);
       if (tab === 'progress') {
         setRoutineLogsMap((prev) => ({ ...prev, [clientId]: [] }));
-        setSkinPhotosMap((prev) => ({ ...prev, [clientId]: [] }));
       } else {
         setSkinMetricsMap((prev) => ({ ...prev, [clientId]: [] }));
       }
     } finally {
       setLoadingDetailsFor(null);
     }
-  }, [activeTab, routineLogsMap, skinMetricsMap, skinPhotosMap]);
+  }, [activeTab, routineLogsMap, skinMetricsMap]);
 
   useEffect(() => {
     if (activeTab === 'users') return;
@@ -321,7 +308,6 @@ export default function ManageUsers() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _renderProgressDetails = (user: MergedUser) => {
     const logs = routineLogsMap[user.id] ?? [];
-    const photos = skinPhotosMap[user.id] ?? [];
     const isLoading = loadingDetailsFor === user.id;
 
     if (isLoading) return <ActivityIndicator size="small" color={COLORS.primary} style={styles.panelLoader} />;
@@ -803,7 +789,6 @@ export default function ManageUsers() {
               {progressModalUser && (() => {
                 const user = progressModalUser;
                 const logs = routineLogsMap[user.id] ?? [];
-                const photos = skinPhotosMap[user.id] ?? [];
 
                 const getISOWeekKey = (date: Date) => {
                   const d = new Date(date);
