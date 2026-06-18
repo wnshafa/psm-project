@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { collection, doc, onSnapshot, orderBy, query, setDoc, Timestamp, where } from "firebase/firestore";
+import { collection, doc, getDocs, onSnapshot, orderBy, query, setDoc, Timestamp, where } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import React, { useEffect, useState } from "react";
 import {
@@ -66,6 +66,7 @@ export default function UserProfile() {
 
   // Report data
   const [weeklyLogs, setWeeklyLogs] = useState<any[]>([]);
+  const [assignedRoutineCount, setAssignedRoutineCount] = useState(0);
   const [skinMetrics, setSkinMetrics] = useState<{ label: string; value: number; color: string }[] | null>(null);
   const [skinDate, setSkinDate] = useState<string | null>(null);
 
@@ -101,6 +102,10 @@ export default function UserProfile() {
         }
       });
 
+      getDocs(query(collection(db, 'routines'), where('clientId', '==', user.uid)))
+        .then((snap) => setAssignedRoutineCount(snap.size))
+        .catch(() => setAssignedRoutineCount(0));
+
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       unsubWeekly = onSnapshot(
@@ -117,7 +122,8 @@ export default function UserProfile() {
             const d = data.date?.toDate();
             if (d) setSkinDate(d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }));
           }
-        }
+        },
+        () => {}
       );
     });
 
@@ -214,7 +220,11 @@ export default function UserProfile() {
   const skinConcernStyle = CONCERN_COLORS[String(skinConcern ?? '').toLowerCase()] ?? { bg: COLORS.inputBackground, text: COLORS.textSecondary };
 
   const weeklyCompleted = weeklyLogs.filter(l => l.status === 'completed').length;
-  const adherencePct = weeklyLogs.length > 0 ? Math.round((weeklyCompleted / weeklyLogs.length) * 100) : 0;
+  const routineCount = assignedRoutineCount > 0
+    ? assignedRoutineCount
+    : new Set(weeklyLogs.map(l => l.routineID)).size;
+  const expectedWeekly = routineCount * 7;
+  const adherencePct = expectedWeekly > 0 ? Math.min(100, Math.round((weeklyCompleted / expectedWeekly) * 100)) : 0;
 
   const SelectionModal = ({ visible, data, selected, onSelect, onClose, title }: any) => (
     <Modal visible={visible} transparent animationType="slide">
@@ -328,12 +338,12 @@ export default function UserProfile() {
           {/* Adherence */}
           <View style={styles.adherenceRow}>
             <Text style={styles.adherenceLabel}>7-Day Adherence</Text>
-            <Text style={styles.adherencePct}>{weeklyLogs.length > 0 ? `${adherencePct}%` : '—'}</Text>
+            <Text style={styles.adherencePct}>{expectedWeekly > 0 ? `${adherencePct}%` : '—'}</Text>
           </View>
           <View style={styles.adherenceTrack}>
-            <View style={[styles.adherenceFill, { flex: weeklyLogs.length > 0 ? adherencePct / 100 : 0 }]} />
+            <View style={[styles.adherenceFill, { flex: expectedWeekly > 0 ? adherencePct / 100 : 0 }]} />
           </View>
-          <Text style={styles.adherenceSub}>{weeklyCompleted} of {weeklyLogs.length} routines completed this week</Text>
+          <Text style={styles.adherenceSub}>{weeklyCompleted} of {expectedWeekly} routines completed this week</Text>
 
           <View style={styles.divider} />
 

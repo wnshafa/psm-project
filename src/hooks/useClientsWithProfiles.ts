@@ -43,6 +43,10 @@ export function useClientsWithProfiles(): { clients: ClientProfile[]; loading: b
           skinType: user?.skinType || client.skinType,
           skinConcern: user?.skinConcern || client.skinConcern,
           age: user?.age || client.age,
+          streak: user?.streak ?? client.streak,
+          totalCompleted: user?.totalCompleted ?? client.totalCompleted,
+          dailyAdherence: user?.dailyAdherence ?? client.dailyAdherence,
+          phoneNumber: user?.phoneNumber || client.phoneNumber,
         };
       });
       merged.sort((a, b) => a.fullName.localeCompare(b.fullName));

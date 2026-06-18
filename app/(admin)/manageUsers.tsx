@@ -5,7 +5,6 @@ import {
   deleteDoc,
   doc,
   getDocs,
-  orderBy,
   query,
   Timestamp,
   updateDoc,
@@ -14,7 +13,6 @@ import {
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -97,8 +95,6 @@ export default function ManageUsers() {
   const [activeTab, setActiveTab] = useState<AdminTab>(
     params.tab === 'progress' || params.tab === 'skin' ? params.tab : 'users'
   );
-  const [activeOverrides, setActiveOverrides] = useState<Record<string, boolean>>({});
-  const [togglingUserId, setTogglingUserId] = useState<string | null>(null);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [routineLogsMap, setRoutineLogsMap] = useState<Record<string, RoutineLog[]>>({});
   const [skinMetricsMap, setSkinMetricsMap] = useState<Record<string, SkinMetricLog[]>>({});
@@ -106,27 +102,17 @@ export default function ManageUsers() {
 
   const [progressModalUser, setProgressModalUser] = useState<MergedUser | null>(null);
 
-  useEffect(() => {
-    setActiveOverrides((prev) => {
-      let changed = false;
-      const next = { ...prev };
+  // Edit user
+  const [editModalUser, setEditModalUser] = useState<MergedUser | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editSkinType, setEditSkinType] = useState("");
+  const [editAge, setEditAge] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editConcern, setEditConcern] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
 
-      rawClients.forEach((client) => {
-        const active = (client as MergedUser).active;
-        if (next[client.id] !== undefined && active === next[client.id]) {
-          delete next[client.id];
-          changed = true;
-        }
-      });
-
-      return changed ? next : prev;
-    });
-  }, [rawClients]);
-
-  const users: MergedUser[] = useMemo(() => rawClients.map(c => {
-    const user = { ...c } as MergedUser;
-    return activeOverrides[user.id] === undefined ? user : { ...user, active: activeOverrides[user.id] };
-  }), [activeOverrides, rawClients]);
+  const users: MergedUser[] = useMemo(() => rawClients.map(c => ({ ...c } as MergedUser)), [rawClients]);
 
   useEffect(() => {
     if (params.tab === 'progress' || params.tab === 'skin' || params.tab === 'users') {
@@ -150,19 +136,33 @@ export default function ManageUsers() {
     setLoadingDetailsFor(clientId);
     try {
       if (tab === 'progress') {
-        const logsSnap = await getDocs(query(collection(db, 'routineLogs'), where('clientId', '==', clientId), orderBy('logDate', 'desc')));
+        const logsSnap = await getDocs(query(collection(db, 'routineLogs'), where('clientId', '==', clientId)));
+        const logs = logsSnap.docs
+          .map((d) => ({ id: d.id, ...d.data() }) as RoutineLog)
+          .sort((a, b) => {
+            const aTime = a.logDate?.toDate?.()?.getTime() ?? 0;
+            const bTime = b.logDate?.toDate?.()?.getTime() ?? 0;
+            return bTime - aTime;
+          });
 
         setRoutineLogsMap((prev) => ({
           ...prev,
-          [clientId]: logsSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as RoutineLog[],
+          [clientId]: logs,
         }));
       }
 
       if (tab === 'skin') {
-        const metricsSnap = await getDocs(query(collection(db, 'skinLogs'), where('clientId', '==', clientId), orderBy('date', 'desc')));
+        const metricsSnap = await getDocs(query(collection(db, 'skinLogs'), where('clientId', '==', clientId)));
+        const metrics = metricsSnap.docs
+          .map((d) => ({ id: d.id, ...d.data() }) as SkinMetricLog)
+          .sort((a, b) => {
+            const aTime = a.date?.toDate?.()?.getTime() ?? 0;
+            const bTime = b.date?.toDate?.()?.getTime() ?? 0;
+            return bTime - aTime;
+          });
         setSkinMetricsMap((prev) => ({
           ...prev,
-          [clientId]: metricsSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as SkinMetricLog[],
+          [clientId]: metrics,
         }));
       }
     } catch (error) {
@@ -195,62 +195,61 @@ export default function ManageUsers() {
     return fallback;
   };
 
-  const handleDelete = (user: MergedUser) => {
+  const handleDelete = async (user: MergedUser) => {
     if (!user.id) {
-      Alert.alert('Error', 'This user record is missing an ID and cannot be removed.');
+      alert('This user record is missing an ID and cannot be removed.');
       return;
     }
 
-    if (deletingUserId || togglingUserId === user.id) return;
+    if (deletingUserId) return;
 
-    Alert.alert('Remove User', `Are you sure you want to remove ${getClientName(user)}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: async () => {
-          setDeletingUserId(user.id);
-          try {
-            await Promise.all([
-              deleteDoc(doc(db, 'users', user.id)),
-              deleteDoc(doc(db, 'clients', user.id)),
-            ]);
-            setActiveOverrides((prev) => {
-              const next = { ...prev };
-              delete next[user.id];
-              return next;
-            });
-            Alert.alert('Success', `${getClientName(user)} has been removed.`);
-          } catch (error) {
-            Alert.alert('Error', getErrorMessage(error, 'Failed to remove user. Please try again.'));
-          } finally {
-            setDeletingUserId(null);
-          }
-        },
-      },
-    ]);
-  };
+    const confirmed = window.confirm(`Are you sure you want to remove ${getClientName(user)}?`);
+    if (!confirmed) return;
 
-  const handleToggleActive = async (user: MergedUser) => {
-    if (!user.id) {
-      Alert.alert('Error', 'This user record is missing an ID and cannot be updated.');
-      return;
-    }
-
-    if (togglingUserId || deletingUserId === user.id) return;
-
-    const nextActive = user.active === false;
-    setTogglingUserId(user.id);
+    setDeletingUserId(user.id);
     try {
-      await updateDoc(doc(db, 'users', user.id), { active: nextActive });
-      setActiveOverrides((prev) => ({ ...prev, [user.id]: nextActive }));
-      Alert.alert('Success', `${getClientName(user)} is now ${nextActive ? 'active' : 'inactive'}.`);
+      await Promise.all([
+        deleteDoc(doc(db, 'users', user.id)),
+        deleteDoc(doc(db, 'clients', user.id)),
+      ]);
+      alert(`${getClientName(user)} has been removed.`);
     } catch (error) {
-      Alert.alert('Error', getErrorMessage(error, 'Failed to update user status. Please try again.'));
+      alert(getErrorMessage(error, 'Failed to remove user. Please try again.'));
     } finally {
-      setTogglingUserId(null);
+      setDeletingUserId(null);
     }
   };
+
+  const openEditModal = (user: MergedUser) => {
+    setEditModalUser(user);
+    setEditName(user.fullName ?? user.name ?? "");
+    setEditEmail(user.email ?? "");
+    setEditSkinType(user.skinType ?? "");
+    setEditAge(user.age ?? "");
+    setEditPhone(user.phoneNumber ?? "");
+    setEditConcern(Array.isArray(user.skinConcern) ? user.skinConcern.join(", ") : user.skinConcern ?? "");
+  };
+
+  async function handleSaveEdit() {
+    if (!editModalUser?.id) return;
+    setSavingEdit(true);
+    try {
+      await updateDoc(doc(db, 'users', editModalUser.id), {
+        fullName: editName.trim(),
+        email: editEmail.trim(),
+        skinType: editSkinType.trim(),
+        age: editAge.trim(),
+        phoneNumber: editPhone.trim(),
+        skinConcern: editConcern.trim().split(",").map(s => s.trim()).filter(Boolean),
+      });
+      alert('User profile updated.');
+      setEditModalUser(null);
+    } catch (error) {
+      alert(getErrorMessage(error, 'Failed to update user.'));
+    } finally {
+      setSavingEdit(false);
+    }
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _renderUserDetails = (user: MergedUser) => (
@@ -293,7 +292,7 @@ export default function ManageUsers() {
       )}
 
       <View style={styles.actions}>
-        <Pressable style={styles.actionBtn} onPress={() => handleToggleActive(user)}>
+        <Pressable style={styles.actionBtn} onPress={() => {}}>
           <Ionicons name={user.active === false ? 'checkmark-circle-outline' : 'ban-outline'} size={16} color={COLORS.textSecondary} />
           <Text style={styles.actionText}>{user.active === false ? 'Activate' : 'Deactivate'}</Text>
         </Pressable>
@@ -595,9 +594,8 @@ export default function ManageUsers() {
             {filtered.map((user, index) => {
               const name = getClientName(user);
               const isEven = index % 2 === 0;
-              const isToggling = togglingUserId === user.id;
               const isDeleting = deletingUserId === user.id;
-              const isBusy = isToggling || isDeleting;
+              const isBusy = isDeleting;
 
               if (activeTab === 'users') {
                 return (
@@ -625,15 +623,11 @@ export default function ManageUsers() {
                     </View>
                     <View style={[styles.tableCell, { flex: 0.8, gap: 6 }]}>
                       <Pressable
-                        style={[styles.actionIconBtn, isToggling && styles.actionIconBtnDisabled]}
-                        onPress={() => handleToggleActive(user)}
+                        style={[styles.actionIconBtn, isDeleting && styles.actionIconBtnDisabled]}
+                        onPress={() => openEditModal(user)}
                         disabled={isBusy}
                       >
-                        {isToggling ? (
-                          <ActivityIndicator size="small" color={COLORS.textSecondary} />
-                        ) : (
-                          <Ionicons name={user.active === false ? 'checkmark-circle-outline' : 'ban-outline'} size={16} color={COLORS.textSecondary} />
-                        )}
+                        <Ionicons name="pencil-outline" size={16} color={COLORS.primary} />
                       </Pressable>
                       <Pressable
                         style={[styles.actionIconBtn, styles.actionIconBtnDanger, isDeleting && styles.actionIconBtnDisabled]}
@@ -701,7 +695,7 @@ export default function ManageUsers() {
                       <ActivityIndicator size="small" color={COLORS.primary} style={{ flex: 4 }} />
                     ) : (
                       <>
-                        <Text style={[styles.tableCellText, { flex: 0.8 }]}>{allLogs.length}</Text>
+                        <Text style={[styles.tableCellText, { flex: 0.8 }]}>{allLogs.length || user.totalCompleted || 0}</Text>
                         <Text style={[styles.tableCellText, { flex: 1 }]}>{thisWeekCount}/14</Text>
                         <Text style={[styles.tableCellText, { flex: 1 }]}>{lastWeekCount}/14</Text>
                         <Text style={[styles.tableCellText, { flex: 1 }]}>{thisMonthCount}/60</Text>
@@ -924,6 +918,42 @@ export default function ManageUsers() {
           </View>
         </View>
       </Modal>
+
+      {/* Edit User Modal */}
+      <Modal visible={!!editModalUser} transparent animationType="fade" onRequestClose={() => setEditModalUser(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.editModal}>
+            <View style={styles.modalHead}>
+              <Text style={styles.modalTitle}>Edit User</Text>
+              <Pressable onPress={() => setEditModalUser(null)}>
+                <Ionicons name="close" size={22} color={COLORS.textSecondary} />
+              </Pressable>
+            </View>
+            <ScrollView contentContainerStyle={styles.editForm} showsVerticalScrollIndicator={false}>
+              <Text style={styles.fieldLabel}>Full Name</Text>
+              <TextInput style={styles.input} value={editName} onChangeText={setEditName} placeholder="Full name" placeholderTextColor={COLORS.textSecondary} />
+              <Text style={styles.fieldLabel}>Email</Text>
+              <TextInput style={styles.input} value={editEmail} onChangeText={setEditEmail} placeholder="Email" placeholderTextColor={COLORS.textSecondary} keyboardType="email-address" />
+              <Text style={styles.fieldLabel}>Skin Type</Text>
+              <TextInput style={styles.input} value={editSkinType} onChangeText={setEditSkinType} placeholder="Skin type" placeholderTextColor={COLORS.textSecondary} />
+              <Text style={styles.fieldLabel}>Age</Text>
+              <TextInput style={styles.input} value={editAge} onChangeText={setEditAge} placeholder="Age" placeholderTextColor={COLORS.textSecondary} keyboardType="number-pad" />
+              <Text style={styles.fieldLabel}>Phone</Text>
+              <TextInput style={styles.input} value={editPhone} onChangeText={setEditPhone} placeholder="Phone number" placeholderTextColor={COLORS.textSecondary} keyboardType="phone-pad" />
+              <Text style={styles.fieldLabel}>Skin Concerns (comma-separated)</Text>
+              <TextInput style={[styles.input, { height: 72, textAlignVertical: "top" }]} value={editConcern} onChangeText={setEditConcern} placeholder="e.g. acne, pigmentation, dryness" placeholderTextColor={COLORS.textSecondary} multiline />
+              <View style={styles.editActions}>
+                <Pressable style={styles.cancelBtn} onPress={() => setEditModalUser(null)}>
+                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                </Pressable>
+                <Pressable style={[styles.saveBtn, savingEdit && { opacity: 0.7 }]} onPress={handleSaveEdit} disabled={savingEdit}>
+                  {savingEdit ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.saveBtnText}>Save Changes</Text>}
+                </Pressable>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1025,4 +1055,16 @@ const styles = StyleSheet.create({
   progressModalName: { fontSize: 15, fontWeight: '800', color: COLORS.textPrimary },
   progressModalClose: { padding: 4 },
   progressModalScroll: { padding: 18, gap: 4 },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 40 },
+  editModal: { backgroundColor: COLORS.card, borderRadius: BORDER_RADIUS.lg, width: "100%", maxWidth: 500, maxHeight: "85%" },
+  modalHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 20, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  modalTitle: { fontSize: FONT_SIZE.md, fontWeight: "700", color: COLORS.textPrimary },
+  editForm: { padding: 20, gap: 12 },
+  fieldLabel: { fontSize: FONT_SIZE.xs, fontWeight: "700", color: COLORS.textSecondary, textTransform: "uppercase", letterSpacing: 0.5 },
+  input: { borderWidth: 1, borderColor: COLORS.border, padding: 12, borderRadius: BORDER_RADIUS.md, backgroundColor: COLORS.card, color: COLORS.textPrimary, fontSize: FONT_SIZE.sm },
+  editActions: { flexDirection: "row", gap: 10, marginTop: 8 },
+  cancelBtn: { flex: 1, paddingVertical: 12, borderRadius: BORDER_RADIUS.md, borderWidth: 1.5, borderColor: COLORS.border, alignItems: "center" },
+  cancelBtnText: { fontSize: FONT_SIZE.sm, fontWeight: "600", color: COLORS.textSecondary },
+  saveBtn: { flex: 1, paddingVertical: 12, borderRadius: BORDER_RADIUS.md, backgroundColor: COLORS.primary, alignItems: "center" },
+  saveBtnText: { color: "#fff", fontWeight: "700", fontSize: FONT_SIZE.sm },
 });

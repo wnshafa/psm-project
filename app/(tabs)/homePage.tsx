@@ -287,6 +287,8 @@ export default function ClientDashboard() {
           const weekTotal = weeklyData.reduce((a, b) => a + b, 0);
           const hasData = weekTotal > 0;
           const chartData = hasData ? weeklyData : [0, 0, 0, 0, 0, 0, 0.01];
+          const maxVal = Math.max(...weeklyData, 1);
+          const segments = Math.min(maxVal, 6);
 
           return (
             <View style={styles.card}>
@@ -305,7 +307,8 @@ export default function ClientDashboard() {
                 width={chartWidth}
                 height={160}
                 fromZero
-                yAxisInterval={1}
+                segments={segments}
+                formatYLabel={(val) => String(Math.round(Number(val)))}
                 chartConfig={{
                   backgroundColor: COLORS.card,
                   backgroundGradientFrom: '#EEF3FB',
